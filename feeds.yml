@@ -1,0 +1,21 @@
+feeds:
+  - outlet_id: guardian
+    lean: center-left
+    trust: 0.88
+    name: Guardian World
+    url: https://www.theguardian.com/world/rss
+  - outlet_id: aljazeera
+    lean: center-left
+    trust: 0.82
+    name: Al Jazeera
+    url: https://www.aljazeera.com/xml/rss/all.xml
+  - outlet_id: npr
+    lean: left
+    trust: 0.85
+    name: NPR
+    url: https://feeds.npr.org/1001/rss.xml
+  - outlet_id: fox
+    lean: right
+    trust: 0.75
+    name: Fox
+    url: https://moxie.foxnews.com/google-publisher/latest.xml

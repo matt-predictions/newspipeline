@@ -1,0 +1,203 @@
+# Twitter / X handles to monitor via Nitter or RSSBridge fallback.
+# Each entry maps to a faux outlet_id used by the existing dedup pipeline.
+# Lean / trust here are best-effort and used purely for the relevance-scoring layer.
+handles:
+  # Politics / DC
+  - handle: AP
+    outlet_id: x_ap
+    name: "Associated Press (X)"
+    lean: center
+    trust: 0.95
+    is_wire: true
+  - handle: Reuters
+    outlet_id: x_reuters
+    name: "Reuters (X)"
+    lean: center
+    trust: 0.95
+    is_wire: true
+  - handle: nytimes
+    outlet_id: x_nytimes
+    name: "NYT (X)"
+    lean: center-left
+    trust: 0.88
+    is_wire: false
+  - handle: BBCBreaking
+    outlet_id: x_bbc_breaking
+    name: "BBC Breaking (X)"
+    lean: center
+    trust: 0.92
+    is_wire: false
+  - handle: AxiosBreaking
+    outlet_id: x_axios_breaking
+    name: "Axios Breaking (X)"
+    lean: center
+    trust: 0.86
+    is_wire: false
+
+  # Markets / Macro
+  - handle: zerohedge
+    outlet_id: x_zerohedge
+    name: "ZeroHedge (X)"
+    lean: right
+    trust: 0.55
+    is_wire: false
+  - handle: BloombergMarkets
+    outlet_id: x_bloomberg_mkts
+    name: "Bloomberg Markets (X)"
+    lean: center
+    trust: 0.90
+    is_wire: false
+  - handle: financialtimes
+    outlet_id: x_ft
+    name: "FT (X)"
+    lean: center
+    trust: 0.90
+    is_wire: false
+  - handle: WSJ
+    outlet_id: x_wsj
+    name: "WSJ (X)"
+    lean: center-right
+    trust: 0.90
+    is_wire: false
+
+  # Geopolitics
+  - handle: AFP
+    outlet_id: x_afp
+    name: "AFP (X)"
+    lean: center
+    trust: 0.92
+    is_wire: true
+  - handle: AlJazeera
+    outlet_id: x_aljazeera
+    name: "Al Jazeera (X)"
+    lean: center-left
+    trust: 0.82
+    is_wire: false
+  - handle: KyivIndependent
+    outlet_id: x_kyiv_independent
+    name: "Kyiv Independent (X)"
+    lean: center
+    trust: 0.85
+    is_wire: false
+  - handle: TheTelegraph
+    outlet_id: x_telegraph
+    name: "The Telegraph (X)"
+    lean: right
+    trust: 0.80
+    is_wire: false
+  - handle: nytimesworld
+    outlet_id: x_nytworld
+    name: "NYT World (X)"
+    lean: center-left
+    trust: 0.87
+    is_wire: false
+
+  # Crypto
+  - handle: CoinDesk
+    outlet_id: x_coindesk
+    name: "CoinDesk (X)"
+    lean: center
+    trust: 0.80
+    is_wire: false
+  - handle: TheBlock__
+    outlet_id: x_the_block
+    name: "The Block (X)"
+    lean: center
+    trust: 0.83
+    is_wire: false
+  - handle: blockworks_
+    outlet_id: x_blockworks
+    name: "Blockworks (X)"
+    lean: center
+    trust: 0.80
+    is_wire: false
+
+  # AI / Tech
+  - handle: TechCrunch
+    outlet_id: x_techcrunch
+    name: "TechCrunch (X)"
+    lean: center
+    trust: 0.78
+    is_wire: false
+  - handle: theinformation
+    outlet_id: x_information
+    name: "The Information (X)"
+    lean: center
+    trust: 0.85
+    is_wire: false
+  - handle: 404mediaco
+    outlet_id: x_404media
+    name: "404 Media (X)"
+    lean: center-left
+    trust: 0.82
+    is_wire: false
+
+  # Sports
+  - handle: ESPN
+    outlet_id: x_espn
+    name: "ESPN (X)"
+    lean: center
+    trust: 0.80
+    is_wire: false
+  - handle: BreakingBaseball
+    outlet_id: x_breaking_baseball
+    name: "Breaking Baseball (X)"
+    lean: center
+    trust: 0.70
+    is_wire: false
+  - handle: TheAthletic
+    outlet_id: x_the_athletic
+    name: "The Athletic (X)"
+    lean: center
+    trust: 0.86
+    is_wire: false
+
+  # Climate / Energy
+  - handle: BloombergGreen
+    outlet_id: x_bloomberg_green
+    name: "Bloomberg Green (X)"
+    lean: center
+    trust: 0.85
+    is_wire: false
+  - handle: climatehome
+    outlet_id: x_climatehome
+    name: "Climate Home News (X)"
+    lean: center-left
+    trust: 0.80
+    is_wire: false
+
+  # Health
+  - handle: STATNews
+    outlet_id: x_stat_news
+    name: "STAT News (X)"
+    lean: center
+    trust: 0.84
+    is_wire: false
+  - handle: KFFHealthNews
+    outlet_id: x_kff
+    name: "KFF Health News (X)"
+    lean: center
+    trust: 0.85
+    is_wire: false
+
+  # Justice / Courts
+  - handle: LawCrimeNews
+    outlet_id: x_lawcrime
+    name: "Law&Crime (X)"
+    lean: center
+    trust: 0.75
+    is_wire: false
+  - handle: politico
+    outlet_id: x_politico
+    name: "Politico (X)"
+    lean: center
+    trust: 0.85
+    is_wire: false
+
+  # Wildcard / dispatch
+  - handle: SpriterEsports
+    outlet_id: x_sprite
+    name: "Sprite Esports (X)"
+    lean: center
+    trust: 0.50
+    is_wire: false

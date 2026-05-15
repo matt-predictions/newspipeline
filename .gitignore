@@ -1,0 +1,12 @@
+.env
+.env.local
+.DS_Store
+data/pipeline.db
+data/cache/
+data/*.jsonl
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+*.egg-info/
+dist/

@@ -1,0 +1,25 @@
+personas:
+  - id: maria
+    card: |
+      Maria, 38, suburban Phoenix, swing voter, two kids. Cares about economy, schools, immigration.
+  - id: walter
+    card: |
+      Walter, 67, retired Tampa FL, conservative. Cares about Social Security, markets, healthcare.
+  - id: devon
+    card: |
+      Devon, 24, Brooklyn software engineer, progressive. Climate, AI/tech, housing.
+  - id: tom
+    card: |
+      Tom, 52, Cleveland HVAC small-business owner, leans conservative. Regulations, fuel, trade.
+  - id: aisha
+    card: |
+      Aisha, 31, Atlanta ER nurse, single mom. Healthcare, safety, schools.
+  - id: james
+    card: |
+      James, 45, NYC equities trader. Markets, Fed, geopolitics.
+  - id: sam
+    card: |
+      Sam, 22, queer trans woman Brooklyn, very online. Trans rights, climate, healthcare access.
+  - id: robert
+    card: |
+      Robert, 62, retired Plano TX tech exec, conservative wealthy. Capital gains, border, values.

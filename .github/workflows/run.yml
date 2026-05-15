@@ -1,0 +1,57 @@
+name: run
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"   # every 30 min: ingest + run top candidate
+  workflow_dispatch:
+    inputs:
+      dedup_hash:
+        description: "Target a specific cluster (optional)"
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: newspipeline-run
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      DRY_RUN: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Ingest
+        run: python -m app.main ingest
+
+      - name: Run story
+        run: |
+          if [ -n "${{ github.event.inputs.dedup_hash }}" ]; then
+            python -m app.main run --dedup-hash "${{ github.event.inputs.dedup_hash }}"
+          else
+            python -m app.main run
+          fi
+
+      - name: Commit output
+        run: |
+          if [ -z "$(ls -A output 2>/dev/null)" ]; then exit 0; fi
+          git config user.name  "newspipeline-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add output data/pipeline.db 2>/dev/null || true
+          git commit -m "run: ${{ github.run_id }}" || echo "nothing to commit"
+          git pull --rebase origin main || true
+          git push origin HEAD:main

@@ -1,0 +1,24 @@
+# Rotating Nitter instances. We try them in order on each fetch; first 200 wins.
+# Nitter rot is real — keep this list ≥ 6 entries and audit weekly via the
+# nitter_healthcheck workflow.
+# Format: full origin (no trailing slash). The per-user RSS feed is
+# `${origin}/${handle}/rss`.
+#
+# Public list reference: https://github.com/zedeus/nitter/wiki/Instances
+instances:
+  - "https://nitter.net"
+  - "https://nitter.privacydev.net"
+  - "https://nitter.poast.org"
+  - "https://nitter.fdn.fr"
+  - "https://nitter.unixfox.eu"
+  - "https://nitter.1d4.us"
+  - "https://nitter.kavin.rocks"
+  - "https://nitter.moomoo.me"
+
+# RSSBridge fallback. Used only when every Nitter instance returns 4xx/5xx
+# for a given handle. RSSBridge has a per-handle bridge endpoint, returning
+# RSS. Format: ${origin}/?action=display&bridge=TwitterBridge&u=${handle}&format=Atom
+rssbridge_instances:
+  - "https://rss-bridge.org/bridge01"
+  - "https://wtf.roflcopter.fr/rss-bridge"
+  - "https://rssbridge.lewd.tech"
