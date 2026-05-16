@@ -96,7 +96,11 @@ async def _build_sources(sub: list[dict[str, Any]]) -> list[dict[str, Any]]:
 async def _market_context_for(sub: list[dict[str, Any]]) -> tuple[dict[str, Any] | None, str]:
     """Try live Polymarket match → propose-market fallback. Returns (block, text-context)."""
     try:
-        live = await match_to_live_market(sub)
+        headlines = [(a.get("title") or "").strip() for a in sub if a.get("title")]
+        live = await match_to_live_market(
+            entities=[],
+            headline_ledger=headlines,
+        )
     except Exception as exc:
         warn("polymarket.match", exc)
         live = None
