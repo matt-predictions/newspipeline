@@ -101,6 +101,17 @@ def _format_cross_outlet(brief: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+_ENDED_REASON_PHRASE: dict[str, str] = {
+    "da_swayed": "Room swayed the devil's advocate",
+    "room_swayed": "Devil's advocate swayed the room",
+    "stalemate": "Stalemate — no convergence",
+    "consensus": "Panel converged",
+    "repetition": "Debate stalled — repeated arguments",
+    "max_turns": "Hit turn cap before consensus",
+    "no_panel": "No panel available",
+}
+
+
 def _format_conversation(conversation: dict[str, Any] | None) -> str:
     if not conversation:
         return "_No persona conversation recorded._"
@@ -110,11 +121,22 @@ def _format_conversation(conversation: dict[str, Any] | None) -> str:
     moderator = conversation.get("moderator_take") or ""
     consensus = conversation.get("consensus_probability_pct")
     panel = conversation.get("panel") or []
+    da_id = conversation.get("devil_advocate_id")
+    ended = str(conversation.get("ended_reason") or "")
     head: list[str] = []
     if panel:
-        head.append(f"**Panel:** {', '.join(panel)}")
+        # Mark the DA inline so readers see "cassandra 🔥" rather than just a name.
+        annotated = [(f"{p} 🔥" if p == da_id else p) for p in panel]
+        head.append(f"**Panel:** {', '.join(annotated)}")
+        if da_id:
+            head.append(f"🔥 _Devil's advocate: `{da_id}`_")
+    phrase = _ENDED_REASON_PHRASE.get(ended, ended or "unknown")
+    if ended == "stalemate":
+        phrase = f"Stalemate — no convergence after {len(turns)} turns"
     if consensus is not None:
-        head.append(f"**Consensus:** {consensus}c YES")
+        head.append(f"**Outcome:** {phrase} — final read **{consensus}c YES**")
+    else:
+        head.append(f"**Outcome:** {phrase}")
     if moderator:
         head.append(f"**Take:** {moderator}")
     body: list[str] = []
@@ -122,7 +144,8 @@ def _format_conversation(conversation: dict[str, Any] | None) -> str:
         pid = t.get("persona_id", "?")
         pct = t.get("probability_pct")
         pct_str = f" ({pct}c)" if pct is not None else ""
-        body.append(f"- **{pid}**{pct_str}: {t.get('text', '').strip()}")
+        badge = " 🔥" if t.get("is_devil_advocate") else ""
+        body.append(f"- **{pid}**{badge}{pct_str}: {t.get('text', '').strip()}")
     return "\n".join(head) + "\n\n" + "\n".join(body)
 
 

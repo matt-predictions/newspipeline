@@ -187,7 +187,9 @@ async def _run_one(
     conversation_dict: dict[str, Any] | None
     try:
         personas = load_personas()
-        panel = personas[:4] if personas else []
+        regulars = [p for p in personas if p.get("role") != "devil_advocate"][:4]
+        da = next((p for p in personas if p.get("role") == "devil_advocate"), None)
+        panel = regulars + ([da] if da else [])
         if panel:
             transcript, _ = await run_conversation(
                 panel,
@@ -195,9 +197,12 @@ async def _run_one(
                 market_context=market_context or "",
             )
             consensus = transcript.consensus_probability_pct
-            consensus_s = f"consensus {consensus}c YES" if consensus is not None else transcript.ended_reason
+            tag_da = " (incl. devil's advocate)" if transcript.devil_advocate_id else ""
+            outcome = transcript.ended_reason
+            if consensus is not None:
+                outcome = f"{transcript.ended_reason} -> {consensus}c YES"
             step(
-                f"panel: {len(panel)} personas, {len(transcript.turns)} turns, {consensus_s}",
+                f"panel: {len(panel)} personas{tag_da}, {len(transcript.turns)} turns, {outcome}",
                 indent=1,
             )
             conversation_dict = transcript.as_dict()
@@ -207,6 +212,7 @@ async def _run_one(
                     "persona_id": t.persona_id,
                     "text": t.text,
                     "probability_pct": t.probability_pct,
+                    "is_devil_advocate": t.is_devil_advocate,
                 }
                 for t in transcript.turns
             ]
