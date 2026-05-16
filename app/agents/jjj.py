@@ -34,18 +34,7 @@ from app.agents.base import (
 )
 from app.core.config import get_settings
 from app.core.jsonx import extract_json_object
-
-
-_SYSTEM = (
-    "You are JJJ, the senior editor of a marketing-driven news desk. "
-    "You take a draft brief and a panel debate transcript, and you rewrite "
-    "the headline hook and the video prompt to be punchier, more "
-    "declarative, and leaning into whichever framing won the debate. "
-    "You preserve facts and entities verbatim — you only sharpen voice and "
-    "structure. Return STRICT JSON: "
-    "{hook: string, higgsfield_prompt: string, edit_notes: short string "
-    "explaining what you changed and why}."
-)
+from app.prompts import load_prompt
 
 
 def _compelling_turns(transcript: dict[str, Any], *, k: int = 4) -> list[str]:
@@ -98,35 +87,16 @@ def _user_prompt(brief: dict[str, Any], transcript: dict[str, Any]) -> str:
     consensus_str = f"{consensus}c YES" if consensus is not None else "no consensus"
     da_id = transcript.get("devil_advocate_id") or "—"
     quotes = "\n".join(_compelling_turns(transcript)) or "(no transcript turns)"
-    return f"""CURRENT HOOK ({len(current_hook)} chars):
-{current_hook}
-
-CURRENT HIGGSFIELD PROMPT:
-{current_prompt}
-
-PANEL OUTCOME:
-- ended_reason: {ended}
-- final consensus: {consensus_str}
-- devil's advocate: {da_id}
-
-MOST COMPELLING TURNS:
-{quotes}
-
-Now rewrite. Constraints:
-- "hook": ≤ 100 chars, declarative (no "may", "could", "might"), no clickbait.
-  Lead with the action. Preserve entities (people, places, numbers) verbatim.
-- "higgsfield_prompt": 2-4 sentences, leans into the framing that WON the
-  debate. If ended_reason was "da_swayed", the DA's framing won — favor it.
-  If "room_swayed", the room's framing won — favor it. If "stalemate" or
-  "max_turns", favor the higher-stakes framing of the two. NEVER name living
-  public figures (silhouettes, empty podiums, name plates, flags only). No
-  rendered text overlays. No on-camera quotes.
-- "edit_notes": ≤ 240 chars explaining what you changed and why (which
-  framing you leaned into, what hedging you cut).
-
-Return STRICT JSON only:
-{{"hook": "...", "higgsfield_prompt": "...", "edit_notes": "..."}}
-"""
+    return load_prompt(
+        "jjj.user",
+        current_hook_len=len(current_hook),
+        current_hook=current_hook,
+        current_prompt=current_prompt,
+        ended=ended,
+        consensus_str=consensus_str,
+        da_id=da_id,
+        quotes=quotes,
+    )
 
 
 async def _edit_openai(
@@ -137,7 +107,7 @@ async def _edit_openai(
         client,
         model=s.openai_model_top,
         messages=[
-            {"role": "system", "content": _SYSTEM},
+            {"role": "system", "content": load_prompt("jjj.system").strip()},
             {"role": "user", "content": prompt},
         ],
         response_format={"type": "json_object"},
@@ -154,6 +124,7 @@ async def _edit_anthropic(
     client: AsyncAnthropic, prompt: str
 ) -> tuple[str, int, int, str]:
     s = get_settings()
+    system = load_prompt("jjj.system").strip()
     msg = await anthropic_call_with_retry(
         client,
         primary_model=s.anthropic_model_sonnet,
@@ -163,7 +134,7 @@ async def _edit_anthropic(
             {
                 "role": "user",
                 "content": (
-                    f"{_SYSTEM}\n\n"
+                    f"{system}\n\n"
                     "Return ONLY a single JSON object — no markdown fences, no prose.\n\n"
                     f"{prompt}"
                 ),

@@ -42,6 +42,7 @@ from app.agents.base import (
 )
 from app.core.config import get_settings
 from app.core.jsonx import extract_json_object
+from app.prompts import load_prompt
 
 
 CONSENSUS_RANGE_CENTS: int = 5
@@ -278,18 +279,16 @@ def _devil_advocate_prefix(
 
     The chosen panelist KEEPS their normal voice (dialect + betting_voice) —
     we only tell them, for THIS debate, to argue the opposite direction with
-    a specific precedent or mechanism.
+    a specific precedent or mechanism. The actual prompt bodies live in
+    ``app/prompts/conversation.devil_advocate.*.md`` so they're editable
+    without touching Python; this function just routes between them.
     """
     persona_summary = _persona_summary(persona)
     persona_id = persona.get("id", "panelist")
     if room_median is None:
-        return (
-            "DEVIL'S ADVOCATE BRIEF — FOR THIS DEBATE ONLY:\n"
-            f"You are this story's devil's advocate FOR THIS DEBATE ONLY. "
-            f"Your normal persona is {persona_summary} — keep that voice, "
-            "dialect, and betting cadence. The panel hasn't priced yet, so "
-            "open with a sharp, evidence-backed contrarian read in your own "
-            "voice so the others have something concrete to push against.\n\n"
+        return load_prompt(
+            "conversation.devil_advocate.unpriced",
+            persona_summary=persona_summary,
         )
     if is_opening:
         if room_median >= 50:
@@ -302,25 +301,18 @@ def _devil_advocate_prefix(
             hint = (
                 f"opening probability MUST be ≥ {target}c (i.e. well above the room)."
             )
-        return (
-            "DEVIL'S ADVOCATE BRIEF — FOR THIS DEBATE ONLY (read FIRST, before persona card):\n"
-            f"You ({persona_id}) are this story's devil's advocate FOR THIS "
-            f"DEBATE ONLY. Your normal persona is {persona_summary}, but for "
-            f"this story the panel has converged near {room_median}c — your "
-            "job is to argue the OPPOSITE direction with a SPECIFIC historical "
-            "precedent or structural mechanism, in YOUR normal voice. Hold the "
-            "position until the panel either sways you with new evidence, or "
-            "you sway them.\n"
-            f"On THIS opening turn: {hint}\n\n"
+        return load_prompt(
+            "conversation.devil_advocate.opening",
+            persona_id=persona_id,
+            persona_summary=persona_summary,
+            room_median=room_median,
+            hint=hint,
         )
-    return (
-        "DEVIL'S ADVOCATE BRIEF — FOR THIS DEBATE ONLY (read FIRST, before persona card):\n"
-        f"You ({persona_id}) are this story's devil's advocate FOR THIS "
-        f"DEBATE ONLY. Your normal persona is {persona_summary}. The room is "
-        f"currently around {room_median}c — keep arguing the opposite "
-        "direction in your own voice, citing concrete precedent or mechanism. "
-        "Move ONLY if a panelist gives you a genuinely new mechanism, not "
-        "because they repeated themselves louder.\n\n"
+    return load_prompt(
+        "conversation.devil_advocate.followup",
+        persona_id=persona_id,
+        persona_summary=persona_summary,
+        room_median=room_median,
     )
 
 
@@ -345,37 +337,19 @@ def _turn_user_prompt(
             room_median=devil_advocate_meta.get("room_median"),
             is_opening=bool(devil_advocate_meta.get("is_opening", False)),
         )
-    return f"""{prefix}You are {persona['id']}. Card:
-{persona.get('card', '')}
-
-Dialect: {persona.get('dialect', '')}
-Bias targets: {persona.get('bias_targets', [])}
-Betting voice (anchor your delivery here): {persona.get('betting_voice', '')}
-
-You're on a Polymarket-style probability panel debating ONE news story.
-
-RULES (hard):
-- ≤3 sentences
-- MUST state a probability you'd bet in either "Xc on YES" / "Y%" form AT LEAST ONCE, OR explicitly engage with the previous probability ("I think 35c is rich, fade it to 22c").
-- MAY ask one direct question to another named panelist (one of: {other_ids}) — but only one.
-- NO breathless hype. No 'breaking', 'shocking', 'epic'.
-- Sound like YOU (use dialect + betting_voice). Don't impersonate the others.
-
-NEWS SUMMARY:
-{summary[:3500]}
-
-{market_context.strip()}
-
-PRIOR TURNS:
-{history_block}
-
-Return JSON ONLY:
-{{
-  "text": "your turn (≤3 sentences)",
-  "probability_pct": int 0-100 or null,
-  "asks_persona": "persona_id or null"
-}}
-"""
+    return load_prompt(
+        "conversation.turn",
+        prefix=prefix,
+        persona_id=persona["id"],
+        persona_card=persona.get("card", ""),
+        persona_dialect=persona.get("dialect", ""),
+        persona_bias_targets=persona.get("bias_targets", []),
+        persona_betting_voice=persona.get("betting_voice", ""),
+        other_ids=other_ids,
+        summary=summary[:3500],
+        market_context=market_context.strip(),
+        history_block=history_block,
+    )
 
 
 async def _one_turn(
