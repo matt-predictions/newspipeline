@@ -1,0 +1,50 @@
+{
+  "panel": [
+    "aisha",
+    "devon",
+    "james",
+    "maria"
+  ],
+  "turns": [
+    {
+      "order": 0,
+      "persona_id": "aisha",
+      "text": "Court just slammed the door on Dems' map, so they're stuck with what they got. I'm seeing 75c on YES - when courts draw lines, they stick. Maria, you think GOP pushes for another redraw before '26, or do they lock this win in?",
+      "probability_pct": 75
+    },
+    {
+      "order": 1,
+      "persona_id": "devon",
+      "text": "75c is rich — base rate on court maps surviving two cycles is maybe 60% given how much both parties love to relitigate this stuff. Market's not pricing in the EV of another challenge or legislative override, especially if VA flips control. I'd fade to 45c on YES.",
+      "probability_pct": 45
+    },
+    {
+      "order": 2,
+      "persona_id": "james",
+      "text": "Devon's 45c looks about right - consensus is way too clean on court maps being permanent. VA's redistricting circus isn't over, especially with control potentially flipping in '25 state elections. I'm a buyer at 42c on YES, seller above 50.",
+      "probability_pct": 42
+    },
+    {
+      "order": 3,
+      "persona_id": "maria",
+      "text": "As a mom who's watched our school board flip three times in six years, I know Virginia politics - nothing stays settled here. These guys are underpricing the chaos factor; between now and '26 we've got state elections, and whoever wins will absolutely take another swing at the maps. I'd put this at 30% - court maps sound permanent until they're not.",
+      "probability_pct": 30
+    },
+    {
+      "order": 4,
+      "persona_id": "aisha",
+      "text": "Maria's right - I've seen three different school board configurations mess with our funding in five years, and that's just local stuff. When I'm stocking supplies, I plan for what actually happens, not what should happen - and Virginia politicians relitigate everything. 30c feels real to me, courts or no courts.",
+      "probability_pct": 30
+    },
+    {
+      "order": 5,
+      "persona_id": "devon",
+      "text": "30c looks right - I'm pulling my fade after seeing how volatile VA redistricting has been historically. Market was way overconfident at 75c but Maria nailed it on the chaos factor; state elections in '25 are a clear catalyst for another redraw attempt regardless of what SCOTUS just did. Taking 30c on YES.",
+      "probability_pct": 30
+    }
+  ],
+  "consensus_probability_pct": 30,
+  "ended_reason": "consensus",
+  "moderator_take": "",
+  "market_context_summary": "Proposed Polymarket market: Will Virginia use a court-ordered congressional map for the 2026 midterm elections? (slug: virginia-court-ordered-congressional-map-2026-midterms, horizon: by November 2026)"
+}

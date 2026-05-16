@@ -16,18 +16,19 @@ from __future__ import annotations
 
 import asyncio
 import json
-import random
 import re
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from anthropic import AsyncAnthropic
+from openai import AsyncOpenAI
 
 from app.agents.base import (
     AgentResult,
     anthropic_call_with_retry,
     classify_model,
     make_result,
+    openai_chat_with_retry,
     rough_cost_cents,
     text_from_anthropic,
 )
@@ -176,7 +177,7 @@ Return JSON ONLY:
 
 
 async def _one_turn(
-    client: AsyncAnthropic,
+    client: AsyncAnthropic | AsyncOpenAI,
     persona: dict[str, Any],
     *,
     summary: str,
@@ -186,21 +187,6 @@ async def _one_turn(
     order: int,
 ) -> tuple[ConversationTurn, int]:
     s = get_settings()
-    if s.dry_run:
-        prob = random.choice([28, 33, 41, 52, 67, 71])
-        text = (
-            f"I'd price this at {prob}c on YES — too clean a story to be priced where it is."
-        )
-        return (
-            ConversationTurn(
-                order=order,
-                persona_id=persona["id"],
-                text=text,
-                probability_pct=prob,
-                asks_persona=None,
-            ),
-            0,
-        )
     prompt = _turn_user_prompt(
         persona=persona,
         summary=summary,
@@ -208,24 +194,49 @@ async def _one_turn(
         history=history,
         other_ids=other_ids,
     )
-    msg = await anthropic_call_with_retry(
-        client,
-        primary_model=s.anthropic_model_sonnet,
-        fallback_model=s.anthropic_model_opus,
-        max_tokens=350,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    text = text_from_anthropic(msg)
+    if isinstance(client, AsyncAnthropic):
+        msg = await anthropic_call_with_retry(
+            client,
+            primary_model=s.anthropic_model_sonnet,
+            fallback_model=s.anthropic_model_opus,
+            max_tokens=350,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = text_from_anthropic(msg)
+        usage = getattr(msg, "usage", None)
+        tin = getattr(usage, "input_tokens", 0) if usage else 0
+        tout = getattr(usage, "output_tokens", 0) if usage else 0
+        model_for_cost = s.anthropic_model_sonnet
+    else:
+        r = await openai_chat_with_retry(
+            client,
+            model=s.openai_model_top,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You roleplay one named Polymarket-style panelist. "
+                        "Stay in voice. Return STRICT JSON only."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.6,
+        )
+        text = r.choices[0].message.content or "{}"
+        usage = getattr(r, "usage", None)
+        tin = getattr(usage, "prompt_tokens", 0) if usage else 0
+        tout = getattr(usage, "completion_tokens", 0) if usage else 0
+        model_for_cost = s.openai_model_top
+
     data = extract_json_object(text) or {}
     body = str(data.get("text") or "").strip()
     prob = data.get("probability_pct")
     if not isinstance(prob, int):
         prob = parse_probability(body)
     asks = data.get("asks_persona") or None
-    usage = getattr(msg, "usage", None)
-    tin = getattr(usage, "input_tokens", 0) if usage else 0
-    tout = getattr(usage, "output_tokens", 0) if usage else 0
-    cents = rough_cost_cents(tin, tout, classify_model(s.anthropic_model_sonnet))
+    cents = rough_cost_cents(tin, tout, classify_model(model_for_cost))
     return (
         ConversationTurn(
             order=order,
@@ -245,26 +256,36 @@ async def run_conversation(
     market_context: str = "",
     max_turns: int = DEFAULT_MAX_TURNS,
 ) -> tuple[ConversationTranscript, AgentResult]:
-    """Round-robin conversation across the picked panel. Returns transcript + cost trace."""
+    """Round-robin conversation across the picked panel. Returns transcript + cost trace.
+
+    Provider routing: Anthropic Sonnet when ``ANTHROPIC_API_KEY`` is present
+    (preferred — better at sustained-voice persona writing), otherwise OpenAI
+    ``gpt-4o`` with JSON-mode. Same prompt either way.
+    """
     s = get_settings()
     ids = [p["id"] for p in panel_personas]
     transcript = ConversationTranscript(
         panel=list(ids), market_context_summary=market_context[:400]
     )
+    provider = "anthropic" if s.has_anthropic else "openai"
+    model_name = s.anthropic_model_sonnet if s.has_anthropic else s.openai_model_top
     if not panel_personas:
         transcript.ended_reason = "no_panel"
         return transcript, make_result(
             "conversation",
-            model=s.anthropic_model_sonnet,
-            provider="anthropic",
+            model=model_name,
+            provider=provider,
             input_summary=summary[:200],
             output_summary="no_panel",
             spend_cents=0,
             extras={"turns": 0},
         )
 
-    akey = s.anthropic_api_key or "sk-ant-dry-run-localxxxxxxxxxxxxx"
-    client = AsyncAnthropic(api_key=akey)
+    client: AsyncAnthropic | AsyncOpenAI
+    if s.has_anthropic:
+        client = AsyncAnthropic(api_key=s.anthropic_api_key)
+    else:
+        client = AsyncOpenAI(api_key=s.openai_api_key)
     total_cents = 0
     order = 0
     while len(transcript.turns) < max_turns:
@@ -295,8 +316,8 @@ async def run_conversation(
 
     result = make_result(
         "conversation",
-        model=s.anthropic_model_sonnet,
-        provider="anthropic",
+        model=model_name,
+        provider=provider,
         input_summary=summary[:200],
         output_summary=json.dumps(
             {"turns": len(transcript.turns), "ended": transcript.ended_reason}

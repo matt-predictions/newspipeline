@@ -1,0 +1,44 @@
+{
+  "panel": [
+    "aisha",
+    "devon",
+    "james",
+    "maria"
+  ],
+  "turns": [
+    {
+      "order": 0,
+      "persona_id": "aisha",
+      "text": "Court just slammed the door on Dem map dreams - they're not getting a redo before 2026. I'd bet 15c on YES because Republicans have zero incentive to redraw when they're winning. James, you think GOP leadership would actually volunteer to hurt themselves here?",
+      "probability_pct": 15
+    },
+    {
+      "order": 1,
+      "persona_id": "devon",
+      "text": "Aisha's 15c looks about right — the base rate for voluntary redistricting by the winning party is basically zero unless forced by courts. Market's probably efficient here at 15%, maybe shade lower to 12c given how cleanly SCOTUS shut this down. The EV on fading to single digits is tempting but volume's gonna be dead.",
+      "probability_pct": 12
+    },
+    {
+      "order": 2,
+      "persona_id": "james",
+      "text": "Devon's 12c is still rich - SCOTUS doesn't do half-measures on redistricting and the political incentives are crystal clear. GOP controls the process, benefits from current lines, zero chance they torch their own map advantage for good government theater. I'm a seller at anything above 8c.",
+      "probability_pct": 8
+    },
+    {
+      "order": 3,
+      "persona_id": "maria",
+      "text": "As a mom watching our school board fights, I know politicians don't give up power voluntarily - James is right that 8% feels about right here. The Supreme Court was pretty clear, and why would Republicans redraw maps that help them win when there's zero pressure to do it? I'd maybe go 6% just because weird stuff sometimes happens in politics, but this feels like a done deal.",
+      "probability_pct": 6
+    },
+    {
+      "order": 4,
+      "persona_id": "aisha",
+      "text": "Maria's got it right - 6c is where this should trade because the only thing lower than zero political incentive is negative political incentive. When you're holding a winning hand, you don't reshuffle the deck. I'm planning my 2026 shift schedule assuming these maps stick around.",
+      "probability_pct": 6
+    }
+  ],
+  "consensus_probability_pct": 7,
+  "ended_reason": "consensus",
+  "moderator_take": "",
+  "market_context_summary": "Proposed Polymarket market: Will Virginia redraw its congressional districts before the 2026 midterm elections? (slug: virginia-congressional-redistricting-before-2026-midterms, horizon: by end of Q3 2026)"
+}

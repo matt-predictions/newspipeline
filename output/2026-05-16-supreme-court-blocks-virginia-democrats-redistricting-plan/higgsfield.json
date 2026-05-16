@@ -1,0 +1,25 @@
+{
+  "prompt": "A dimly lit courtroom with a large, imposing gavel on the bench. In the background, a map of Virginia with highlighted districts glows subtly. Silhouettes of judges sit behind a long table, their faces obscured. The atmosphere is tense, with shadows casting across the room.",
+  "camera_move": "dolly_in",
+  "aspect_ratio": "16:9",
+  "duration_s": 8,
+  "ref_image_path": "./hero.png",
+  "polymarket": {
+    "proposed_market_slug": "virginia-congressional-redistricting-before-2026-midterms",
+    "proposed_market": {
+      "title": "Will Virginia redraw its congressional districts before the 2026 midterm elections?",
+      "slug": "virginia-congressional-redistricting-before-2026-midterms",
+      "outcome_type": "binary",
+      "outcomes": [
+        "Yes",
+        "No"
+      ],
+      "resolution_criteria": "This market resolves to 'Yes' if Virginia adopts new congressional district boundaries that differ from the current map before the 2026 midterm elections, as confirmed by official state records or major news outlets. The Supreme Court recently rejected Virginia Democrats' bid to restore a congressional map favoring Democrats, but new redistricting efforts could emerge through legislative action or other legal challenges.",
+      "resolution_source_hint": "Virginia State Board of Elections, AP/Reuters confirmation of new district maps, or official state government announcements",
+      "horizon": "by end of Q3 2026",
+      "horizon_iso": "2026-09-30T23:59:59Z",
+      "confidence_market_attracts_volume": 0.7,
+      "rationale": "Following the Supreme Court's rejection of Virginia Democrats' redistricting plan, there remains significant political stakes around congressional maps ahead of the 2026 midterms. The market is grounded in concrete legal developments and has clear resolution criteria based on whether new maps are adopted, making it attractive to political prediction traders."
+    }
+  }
+}

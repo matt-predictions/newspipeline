@@ -20,10 +20,6 @@ def cosine_sim(a: list[float], b: list[float]) -> float:
 
 async def embed_texts(texts: list[str]) -> list[list[float]]:
     s = get_settings()
-    if s.dry_run:
-        # Same vector => single cluster for fixture tests
-        v = [0.001 * (i % 100) for i in range(1536)]
-        return [list(v) for _ in texts]
     client = AsyncOpenAI(api_key=s.openai_api_key)
     out: list[list[float]] = []
     batch_size = int(getattr(s, "embedding_batch_size", 96))

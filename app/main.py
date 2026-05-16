@@ -3,8 +3,10 @@
 Two commands. The whole POC:
 
 - ``ingest``: poll RSS + X feeds, persist to sqlite.
-- ``run``:    pick a cluster, generate the brief, write the event folder.
-              ``--dedup-hash`` targets a specific story; otherwise top candidate.
+- ``run``:    by default generates 5 distinct stories (``-n`` to override).
+              Pass ``--dedup-hash`` to target one specific cluster.
+
+Progress prints to stdout while it runs; final JSON summary at the end.
 """
 
 from __future__ import annotations
@@ -24,6 +26,12 @@ async def _main_async(args: argparse.Namespace) -> None:
         return
     if args.cmd == "run":
         s.validate_keys()
+        if args.n and args.n > 1 and not args.dedup_hash:
+            from app.story.pipeline import run_multiple
+
+            results = await run_multiple(n=args.n)
+            print(json.dumps(results, default=str, indent=2))
+            return
         print(json.dumps(await run_story(args.dedup_hash), default=str, indent=2))
         return
 
@@ -37,6 +45,12 @@ def main() -> None:
         "--dedup-hash",
         default=None,
         help="Target a specific cluster (default: top candidate)",
+    )
+    run.add_argument(
+        "-n",
+        type=int,
+        default=5,
+        help="Number of distinct stories to generate (default: 5)",
     )
     asyncio.run(_main_async(p.parse_args()))
 

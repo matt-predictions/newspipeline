@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from anthropic import AsyncAnthropic
+from openai import AsyncOpenAI
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.agents.base import (
@@ -22,6 +23,7 @@ from app.agents.base import (
     anthropic_call_with_retry,
     classify_model,
     make_result,
+    openai_chat_with_retry,
     rough_cost_cents,
     text_from_anthropic,
 )
@@ -166,27 +168,6 @@ def _check_freshness(
     return True, ""
 
 
-def _dry_run_proposed(research: ResearchOut) -> ProposedMarket:
-    return ProposedMarket(
-        title=(research.news_hook_line or "Major policy decision in the next 90 days")[:120],
-        slug="economic-policy-pivot-q3-2026",
-        outcome_type="binary",
-        outcomes=["Yes", "No"],
-        resolution_criteria=(
-            "Resolves YES if AP/Reuters wire confirms the policy pivot enumerated in "
-            "the headline ledger by the horizon. Otherwise NO."
-        ),
-        resolution_source_hint="AP/Reuters wire + official agency press release",
-        horizon="within 90 days",
-        horizon_iso=None,
-        confidence_market_attracts_volume=0.45,
-        rationale=(
-            "Cluster spans NPR + Fox on the same economic pivot. Plausible 90-day "
-            "horizon, clean wire-resolvable criteria, modest expected volume."
-        ),
-    )
-
-
 def _scrub_stale_years(pm: ProposedMarket, *, today: datetime) -> ProposedMarket:
     """Last-resort fix: replace stale year tokens with a sensible future year.
 
@@ -233,45 +214,81 @@ def _scrub_stale_years(pm: ProposedMarket, *, today: datetime) -> ProposedMarket
     return new
 
 
+async def _call_anthropic(
+    client: AsyncAnthropic, prompt: str
+) -> tuple[str, int, int]:
+    s = get_settings()
+    msg = await anthropic_call_with_retry(
+        client,
+        primary_model=s.anthropic_model_sonnet,
+        fallback_model=s.anthropic_model_opus,
+        max_tokens=1500,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    text = text_from_anthropic(msg)
+    usage = getattr(msg, "usage", None)
+    tin = getattr(usage, "input_tokens", 0) if usage else 0
+    tout = getattr(usage, "output_tokens", 0) if usage else 0
+    return text, tin, tout
+
+
+async def _call_openai(
+    client: AsyncOpenAI, prompt: str
+) -> tuple[str, int, int]:
+    s = get_settings()
+    r = await openai_chat_with_retry(
+        client,
+        model=s.openai_model_top,
+        messages=[
+            {"role": "system", "content": PROPOSER_SYSTEM},
+            {"role": "user", "content": prompt},
+        ],
+        response_format={"type": "json_object"},
+        temperature=0.3,
+    )
+    text = r.choices[0].message.content or "{}"
+    usage = getattr(r, "usage", None)
+    tin = getattr(usage, "prompt_tokens", 0) if usage else 0
+    tout = getattr(usage, "completion_tokens", 0) if usage else 0
+    return text, tin, tout
+
+
 async def propose_market(
     research: ResearchOut,
     *,
-    client: AsyncAnthropic | None = None,
+    client: AsyncAnthropic | AsyncOpenAI | None = None,
     brand_kit_block: str = "",
 ) -> tuple[ProposedMarket, AgentResult]:
+    """Generate a proposed Polymarket spec.
+
+    Routes through Anthropic Sonnet when ``ANTHROPIC_API_KEY`` is set
+    (preferred for clean market-design prose); falls back to OpenAI
+    ``gpt-4o`` with JSON-mode when only ``OPENAI_API_KEY`` is set. The
+    freshness check + one-shot regen + last-resort year-bump are identical
+    in both paths.
+    """
     s = get_settings()
     today = datetime.now(timezone.utc)
     prompt = _user_prompt(research, brand_kit_block=brand_kit_block, today=today)
-    if s.dry_run:
-        pm = _dry_run_proposed(research)
-        result = make_result(
-            "market_proposer",
-            model=s.anthropic_model_sonnet,
-            provider="anthropic",
-            input_summary=prompt,
-            output_summary=pm.model_dump_json(),
-            spend_cents=0,
-            extras={"dry_run": True},
-        )
-        return pm, result
+
+    use_anthropic = s.has_anthropic if not isinstance(client, AsyncOpenAI) else False
+    if isinstance(client, AsyncAnthropic):
+        use_anthropic = True
     if client is None:
-        client = AsyncAnthropic(
-            api_key=s.anthropic_api_key or "sk-ant-dry-run-localxxxxxxxxxxxxx"
-        )
+        if use_anthropic:
+            client = AsyncAnthropic(api_key=s.anthropic_api_key)
+        else:
+            client = AsyncOpenAI(api_key=s.openai_api_key)
 
-    async def _call(p: str):
-        return await anthropic_call_with_retry(
-            client,
-            primary_model=s.anthropic_model_sonnet,
-            fallback_model=s.anthropic_model_opus,
-            max_tokens=1500,
-            messages=[
-                {"role": "user", "content": p},
-            ],
-        )
+    provider = "anthropic" if use_anthropic else "openai"
+    model_name = s.anthropic_model_sonnet if use_anthropic else s.openai_model_top
 
-    msg = await _call(prompt)
-    text = text_from_anthropic(msg)
+    async def _call(p: str) -> tuple[str, int, int]:
+        if use_anthropic:
+            return await _call_anthropic(client, p)  # type: ignore[arg-type]
+        return await _call_openai(client, p)  # type: ignore[arg-type]
+
+    text, tin, tout = await _call(prompt)
     data: dict[str, Any] = extract_json_object(text) or {}
     pm = ProposedMarket.model_validate(data)
 
@@ -285,28 +302,27 @@ async def propose_market(
             today=today,
             stale_feedback=why,
         )
-        msg2 = await _call(regen_prompt)
-        text2 = text_from_anthropic(msg2)
+        text2, tin2, tout2 = await _call(regen_prompt)
         data2: dict[str, Any] = extract_json_object(text2) or {}
         pm2 = ProposedMarket.model_validate(data2)
         is_fresh2, why2 = _check_freshness(pm2, today=today)
         if is_fresh2:
             pm = pm2
             text = text2
-            msg = msg2
+            tin += tin2
+            tout += tout2
         else:
             extras["freshness_scrubbed"] = why2
             pm = _scrub_stale_years(pm2, today=today)
             text = pm.model_dump_json()
+            tin += tin2
+            tout += tout2
 
-    usage = getattr(msg, "usage", None)
-    tin = getattr(usage, "input_tokens", 0) if usage else 0
-    tout = getattr(usage, "output_tokens", 0) if usage else 0
-    cents = rough_cost_cents(tin, tout, classify_model(s.anthropic_model_sonnet))
+    cents = rough_cost_cents(tin, tout, classify_model(model_name))
     result = make_result(
         "market_proposer",
-        model=s.anthropic_model_sonnet,
-        provider="anthropic",
+        model=model_name,
+        provider=provider,
         input_summary=prompt,
         output_summary=text,
         spend_cents=cents,

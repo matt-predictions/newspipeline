@@ -1,0 +1,56 @@
+{
+  "panel": [
+    "aisha",
+    "devon",
+    "james",
+    "maria"
+  ],
+  "turns": [
+    {
+      "order": 0,
+      "persona_id": "aisha",
+      "text": "Third trial, same deadlock - prosecutors are running out of steam and public attention. System's grinding down everyone involved, including Mann who's testified three times now. I'm at 25c on YES - they'll try once more but momentum's fading fast.",
+      "probability_pct": 25
+    },
+    {
+      "order": 1,
+      "persona_id": "devon",
+      "text": "25c feels low given the sunk costs and institutional momentum - DA's office has political incentives to keep pursuing this, especially with the 2020 conviction getting overturned. Base rate for high-profile prosecutorial persistence after mistrials is way higher than implied here. I'll take 45c on YES.",
+      "probability_pct": 45
+    },
+    {
+      "order": 2,
+      "persona_id": "james",
+      "text": "45c is rich - prosecutors are bleeding resources on a case that's already hung twice, and Mann's credibility degrades with each re-telling. Post-MeToo fatigue is real, DAs pivot to easier wins when conviction odds crater. I'd fade this to 28c max.",
+      "probability_pct": 28
+    },
+    {
+      "order": 3,
+      "persona_id": "maria",
+      "text": "As a mom watching this unfold, I keep thinking about the victim here - three times testifying has to be absolutely brutal, and at some point the system has to ask if putting her through this again is fair. The prosecutors are in a tough spot politically, but they're also burning through taxpayer money on a case that's deadlocked twice now. I'd give it maybe 35% they try one more time, but honestly I think everyone's exhausted at this point.",
+      "probability_pct": 35
+    },
+    {
+      "order": 4,
+      "persona_id": "aisha",
+      "text": "Maria's right about the victim trauma - I see what repeat testimony does to people in the ER, it's brutal. But James is wrong about resources - high-profile cases like this get different budget treatment, and the DA can't look soft on sexual assault. I'll stick at 25c - third mistrial killed the momentum, and even prosecutors know when a case is unsalvageable.",
+      "probability_pct": 25
+    },
+    {
+      "order": 5,
+      "persona_id": "devon",
+      "text": "I think 35c is rich, fade it to 22c. The conviction-after-multiple-mistrials base rate is abysmal - like 15% historically - and that's before accounting for witness fatigue degrading testimony quality each iteration. DA offices optimize for win rates over justice theater when the cameras aren't rolling.",
+      "probability_pct": 22
+    },
+    {
+      "order": 6,
+      "persona_id": "james",
+      "text": "Devon's finally pricing this correctly - 22c is fair value given the abysmal conviction rates post-double mistrial. Prosecutors know a third hung jury would be career poison, and Mann's testimony has already been stress-tested twice by defense counsel. I'm comfortable at 22c, maybe a shade lower given the resource burn and optics nightmare.",
+      "probability_pct": 20
+    }
+  ],
+  "consensus_probability_pct": 22,
+  "ended_reason": "consensus",
+  "moderator_take": "",
+  "market_context_summary": "Proposed Polymarket market: Will Harvey Weinstein face a new trial by end of 2026? (slug: harvey-weinstein-new-trial-by-end-2026, horizon: by end of 2026)"
+}

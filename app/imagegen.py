@@ -47,11 +47,6 @@ _IMAGE_TRY_DALLE3: list[dict[str, Any]] = [
 ]
 
 
-_DRY_RUN_PNG_B64 = (
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
-)
-
-
 def _cache_key(prompt: str) -> str:
     return hashlib.sha256(prompt.encode()).hexdigest()[:24]
 
@@ -80,9 +75,16 @@ async def _attempt(
     return None
 
 
-async def render_hero(prompt: str, out_path: Path) -> Path:
-    """Render one hero PNG. ``prompt`` is wrapped in the brand prefix."""
+async def render_hero(prompt: str, out_path: Path) -> Path | None:
+    """Render one hero PNG. ``prompt`` is wrapped in the brand prefix.
+
+    Returns ``None`` when ``OPENAI_API_KEY`` is not configured — image
+    generation is an OpenAI-only step and the pipeline runs Anthropic-only as
+    well. The caller surfaces this in the event README.
+    """
     s = get_settings()
+    if not s.has_openai:
+        return None
     full = f"{_BRAND_PREFIX}\n\nSCENE:\n{prompt.strip()}"
     cache_dir = s.data_dir / "cache" / "images"
     cache_dir.mkdir(parents=True, exist_ok=True)
@@ -90,9 +92,6 @@ async def render_hero(prompt: str, out_path: Path) -> Path:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     if cached.exists():
         out_path.write_bytes(cached.read_bytes())
-        return out_path
-    if s.dry_run:
-        out_path.write_bytes(base64.b64decode(_DRY_RUN_PNG_B64))
         return out_path
     client = AsyncOpenAI(api_key=s.openai_api_key)
     models_to_try = [s.openai_image_model]

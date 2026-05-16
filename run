@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# One-shot entrypoint: venv -> deps -> ingest -> run.
+# Pass --help (or any flag) and we only invoke the CLI — no ingest.
+set -euo pipefail
+cd "$(dirname "$0")"
+
+if [ ! -d .venv ]; then
+  python3 -m venv .venv
+fi
+# shellcheck disable=SC1091
+source .venv/bin/activate
+pip install -q -r requirements.txt
+
+# Help / introspection: just forward to the CLI.
+case "${1:-}" in
+  -h|--help|help)
+    exec python -m app.main run --help
+    ;;
+esac
+
+python -m app.main ingest
+python -m app.main run "$@"

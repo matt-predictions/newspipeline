@@ -1,0 +1,25 @@
+{
+  "prompt": "A dimly lit Supreme Court chamber with an empty bench, symbolizing justice. A gavel lies on the desk, casting a long shadow. In the background, a map of Virginia fades in, highlighting contested districts. The atmosphere is tense, with a focus on the weight of the decision.",
+  "camera_move": "dolly_in",
+  "aspect_ratio": "16:9",
+  "duration_s": 8,
+  "ref_image_path": "./hero.png",
+  "polymarket": {
+    "proposed_market_slug": "virginia-court-ordered-congressional-map-2026-midterms",
+    "proposed_market": {
+      "title": "Will Virginia use a court-ordered congressional map for the 2026 midterm elections?",
+      "slug": "virginia-court-ordered-congressional-map-2026-midterms",
+      "outcome_type": "binary",
+      "outcomes": [
+        "Yes",
+        "No"
+      ],
+      "resolution_criteria": "This market resolves based on whether Virginia conducts its 2026 congressional elections using a court-ordered redistricting map, following the Supreme Court's rejection of the Democratic-backed redistricting plan. Resolution will be determined by official confirmation from the Virginia State Board of Elections or federal court orders regarding the final congressional district boundaries used for the November 2026 elections.",
+      "resolution_source_hint": "Virginia State Board of Elections official statements, federal court orders, AP/Reuters confirmation of final district maps",
+      "horizon": "by November 2026",
+      "horizon_iso": "2026-11-30T23:59:59Z",
+      "confidence_market_attracts_volume": 0.7,
+      "rationale": "The Supreme Court's rejection of Virginia Democrats' redistricting plan creates immediate uncertainty about which congressional map will be used for upcoming elections. This is a concrete, resolvable question with clear stakes for Virginia's political landscape and will attract interest from political prediction markets participants tracking redistricting outcomes."
+    }
+  }
+}

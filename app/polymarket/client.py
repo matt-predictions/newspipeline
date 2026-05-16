@@ -182,25 +182,8 @@ async def _http_get_json(
         return None
 
 
-def _dry_run_event(slug: str = "fed-rate-decision-q3-2026") -> dict[str, Any]:
-    return {
-        "slug": slug,
-        "title": "Fed Funds Rate decision in Q3 2026",
-        "active": True,
-        "closed": False,
-        "endDate": "2026-09-30T00:00:00Z",
-        "volume": 482_315.0,
-        "tags": [{"label": "Economy"}, {"label": "Federal Reserve"}],
-        "outcomes": [
-            {"outcome": "Yes", "price": 0.62},
-            {"outcome": "No", "price": 0.38},
-        ],
-    }
-
-
 async def search_markets(query: str, *, limit: int = 8) -> list[PolyMarket]:
     """Keyword search against active Polymarket events."""
-    s = get_settings()
     q = (query or "").strip()
     if not q:
         return []
@@ -208,10 +191,6 @@ async def search_markets(query: str, *, limit: int = 8) -> list[PolyMarket]:
     cached = _cache_get(key, ttl_seconds=600)
     if cached is not None:
         return [PolyMarket.from_event_payload(p) for p in cached]
-    if s.dry_run:
-        payload = [_dry_run_event()]
-        _cache_put(key, payload)
-        return [PolyMarket.from_event_payload(p) for p in payload]
     data = await _http_get_json(
         f"{GAMMA_BASE_URL}/events",
         params={
@@ -228,7 +207,6 @@ async def search_markets(query: str, *, limit: int = 8) -> list[PolyMarket]:
 
 
 async def get_market(slug: str) -> PolyMarket | None:
-    s = get_settings()
     slug = (slug or "").strip()
     if not slug:
         return None
@@ -236,10 +214,6 @@ async def get_market(slug: str) -> PolyMarket | None:
     cached = _cache_get(key, ttl_seconds=300)
     if cached is not None:
         return PolyMarket.from_event_payload(cached)
-    if s.dry_run:
-        payload = _dry_run_event(slug=slug)
-        _cache_put(key, payload)
-        return PolyMarket.from_event_payload(payload)
     data = await _http_get_json(
         f"{GAMMA_BASE_URL}/events",
         params={"slug": slug},
@@ -254,15 +228,10 @@ async def get_market(slug: str) -> PolyMarket | None:
 
 
 async def list_active(limit: int = 200) -> list[PolyMarket]:
-    s = get_settings()
     key = _cache_key("active", str(limit))
     cached = _cache_get(key, ttl_seconds=900)
     if cached is not None:
         return [PolyMarket.from_event_payload(p) for p in cached]
-    if s.dry_run:
-        payload = [_dry_run_event()]
-        _cache_put(key, payload)
-        return [PolyMarket.from_event_payload(p) for p in payload]
     data = await _http_get_json(
         f"{GAMMA_BASE_URL}/events",
         params={"active": "true", "closed": "false", "limit": str(limit)},

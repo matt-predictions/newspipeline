@@ -1,0 +1,25 @@
+{
+  "prompt": "In a dimly lit courtroom, a silhouetted jury box stands empty, casting long shadows. An empty judge's bench looms in the background, symbolizing unresolved justice. The atmosphere is tense, with a single spotlight highlighting the empty witness stand.",
+  "camera_move": "dolly_out",
+  "aspect_ratio": "16:9",
+  "duration_s": 8,
+  "ref_image_path": "./hero.png",
+  "polymarket": {
+    "proposed_market_slug": "harvey-weinstein-new-trial-by-end-2026",
+    "proposed_market": {
+      "title": "Will Harvey Weinstein face a new trial by end of 2026?",
+      "slug": "harvey-weinstein-new-trial-by-end-2026",
+      "outcome_type": "binary",
+      "outcomes": [
+        "Yes",
+        "No"
+      ],
+      "resolution_criteria": "This market resolves to 'Yes' if a new trial for Harvey Weinstein on sexual assault charges begins by December 31, 2026, as confirmed by court records or official statements from the Manhattan District Attorney's office. Following the mistrial declared after jurors failed to reach a verdict on allegations he sexually assaulted actor Jessica Mann, prosecutors will need to decide whether to pursue a new trial.",
+      "resolution_source_hint": "Manhattan District Attorney's office statements, New York court records, or major news wire confirmation of trial commencement",
+      "horizon": "by end of 2026",
+      "horizon_iso": "2026-12-31T23:59:59Z",
+      "confidence_market_attracts_volume": 0.7,
+      "rationale": "This market is grounded in the recent mistrial declaration where jurors failed to reach a verdict on sexual assault allegations. The decision of whether prosecutors will pursue a new trial is a concrete legal outcome that can be definitively resolved through official court records and DA statements."
+    }
+  }
+}

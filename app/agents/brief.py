@@ -21,12 +21,15 @@ import re
 from datetime import datetime, timezone
 from typing import Any
 
+from anthropic import AsyncAnthropic
 from openai import AsyncOpenAI
 
 from app.agents.base import (
+    anthropic_call_with_retry,
     classify_model,
     openai_chat_with_retry,
     rough_cost_cents,
+    text_from_anthropic,
 )
 from app.core.config import get_settings
 from app.core.jsonx import extract_json_object
@@ -106,7 +109,7 @@ No fields may be missing. No prose outside the JSON.
 
 def _default_brief(reason: str) -> dict[str, Any]:
     return {
-        "hook": "dry run",
+        "hook": reason,
         "per_outlet_angle": {},
         "convergent_facts": [],
         "divergent_framings": [],
@@ -151,18 +154,10 @@ def _scrub_stale_years(obj: Any, *, current_year: int, target_year: int) -> Any:
     return obj
 
 
-async def write_brief(
-    client: AsyncOpenAI,
-    sources: list[dict[str, Any]],
-    *,
-    market_context: str = "",
-) -> dict[str, Any]:
-    """One LLM call → dict with hook, cross-outlet analysis, and Higgsfield prompt."""
+async def _write_brief_openai(
+    client: AsyncOpenAI, prompt: str
+) -> tuple[str, int, int, str]:
     s = get_settings()
-    today = datetime.now(timezone.utc)
-    if s.dry_run or not sources:
-        return _default_brief("dry run")
-    prompt = _user_prompt(sources, market_context=market_context, today=today)
     r = await openai_chat_with_retry(
         client,
         model=s.openai_model_top,
@@ -174,19 +169,80 @@ async def write_brief(
         temperature=0.4,
     )
     text = r.choices[0].message.content or "{}"
+    usage = getattr(r, "usage", None)
+    tin = getattr(usage, "prompt_tokens", 0) if usage else 0
+    tout = getattr(usage, "completion_tokens", 0) if usage else 0
+    return text, tin, tout, s.openai_model_top
+
+
+async def _write_brief_anthropic(
+    client: AsyncAnthropic, prompt: str
+) -> tuple[str, int, int, str]:
+    """Anthropic-only fallback. Same prompt, same JSON shape."""
+    s = get_settings()
+    msg = await anthropic_call_with_retry(
+        client,
+        primary_model=s.anthropic_model_sonnet,
+        fallback_model=s.anthropic_model_opus,
+        max_tokens=4000,
+        messages=[
+            {
+                "role": "user",
+                "content": (
+                    f"{_SYSTEM}\n\n"
+                    "Return ONLY a single JSON object — no markdown fences, no prose.\n\n"
+                    f"{prompt}"
+                ),
+            }
+        ],
+    )
+    text = text_from_anthropic(msg) or "{}"
+    usage = getattr(msg, "usage", None)
+    tin = getattr(usage, "input_tokens", 0) if usage else 0
+    tout = getattr(usage, "output_tokens", 0) if usage else 0
+    return text, tin, tout, s.anthropic_model_sonnet
+
+
+async def write_brief(
+    client: AsyncOpenAI | AsyncAnthropic | None,
+    sources: list[dict[str, Any]],
+    *,
+    market_context: str = "",
+) -> dict[str, Any]:
+    """One LLM call → dict with hook, cross-outlet analysis, and Higgsfield prompt.
+
+    Routes through OpenAI when ``OPENAI_API_KEY`` is set; falls back to
+    Anthropic Sonnet when only ``ANTHROPIC_API_KEY`` is set. Output shape is
+    identical so the rest of the pipeline doesn't care which provider ran.
+    Passing ``client=None`` lets us construct the right client for the
+    configured provider; passing an explicit client of the right type is also
+    fine (used by tests / callers that already have a pool).
+    """
+    s = get_settings()
+    today = datetime.now(timezone.utc)
+    if not sources:
+        return _default_brief("no sources in cluster")
+    prompt = _user_prompt(sources, market_context=market_context, today=today)
+
+    if s.has_openai:
+        oc = client if isinstance(client, AsyncOpenAI) else AsyncOpenAI(api_key=s.openai_api_key)
+        text, tin, tout, model = await _write_brief_openai(oc, prompt)
+    elif s.has_anthropic:
+        ac = client if isinstance(client, AsyncAnthropic) else AsyncAnthropic(api_key=s.anthropic_api_key)
+        text, tin, tout, model = await _write_brief_anthropic(ac, prompt)
+    else:
+        return _default_brief("no API keys configured")
+
     data = extract_json_object(text) or _default_brief("empty LLM output")
     for key, default in _default_brief("missing").items():
         data.setdefault(key, default)
     data = _scrub_stale_years(
         data, current_year=today.year, target_year=today.year + 1
     )
-    usage = getattr(r, "usage", None)
-    tin = getattr(usage, "prompt_tokens", 0) if usage else 0
-    tout = getattr(usage, "completion_tokens", 0) if usage else 0
     data["_meta"] = {
-        "model": s.openai_model_top,
+        "model": model,
         "tokens_in": tin,
         "tokens_out": tout,
-        "spend_cents": rough_cost_cents(tin, tout, classify_model(s.openai_model_top)),
+        "spend_cents": rough_cost_cents(tin, tout, classify_model(model)),
     }
     return data

@@ -1,15 +1,20 @@
 """End-to-end pipeline.
 
-Linear flow, no debate loops, no relevance gating, no continuity index:
+Linear flow, no debate loops, no relevance gating:
 
 1. Embed and cluster recent articles.
-2. Pick the top cohesion-passing candidate (or one matching a given dedup_hash).
+2. Pick the top cohesion-passing candidate (or one matching ``dedup_hash``).
 3. Build the ``sources`` list (per-outlet article URLs).
 4. One LLM call → cross-outlet brief + Higgsfield video prompt + hero image prompt.
 5. Persona panel discusses the story.
 6. Polymarket: live-match → propose-market if no live match.
 7. Render the hero image.
-8. Write the 4-file output folder + rebuild ``output/README.md``.
+8. Optional: Sora 2 video render (off by default, hero is the reference frame).
+9. Write the 5-file output folder + rebuild ``output/README.md``.
+
+All progress is printed to stdout via ``app.core.log`` — single-line timestamps,
+no JSON until the final summary. Errors squash to ``WARNING: <step> failed: ...``
+and the pipeline keeps going where it sanely can.
 """
 
 from __future__ import annotations
@@ -31,6 +36,7 @@ from app.cluster.candidates import (
 from app.cluster.embedding import embed_texts
 from app.core.config import get_settings
 from app.core.db import init_db, list_articles
+from app.core.log import step, warn
 from app.imagegen import render_hero
 from app.ingest.rss import poll_all as poll_rss
 from app.ingest.twitter_nitter import poll_all_twitter
@@ -38,15 +44,32 @@ from app.personas.conversation import run_conversation
 from app.personas.panel import load_personas
 from app.polymarket.matcher import match_to_live_market
 from app.polymarket.proposer import propose_market
+from app.render.sora import render_video
 from app.story.write import write_event, write_index
 
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 
+# Two candidate clusters with > this Jaccard overlap on their article-index
+# sets are treated as sibling clusters of the same story (e.g. the two SCOTUS
+# Virginia redistricting clusters that share 4 of 5 articles).
+SIBLING_JACCARD_THRESHOLD: float = 0.5
+
 
 def _slugify(s: str, max_len: int = 80) -> str:
     out = _SLUG_RE.sub("-", (s or "").lower()).strip("-")
     return out[:max_len] or "untitled"
+
+
+def _jaccard(a: tuple[int, ...], b: tuple[int, ...]) -> float:
+    sa, sb = set(a), set(b)
+    if not sa or not sb:
+        return 0.0
+    return len(sa & sb) / len(sa | sb)
+
+
+def _short_hash(h: str) -> str:
+    return (h or "")[:8] or "????????"
 
 
 async def _build_sources(sub: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -71,7 +94,8 @@ async def _market_context_for(sub: list[dict[str, Any]]) -> tuple[dict[str, Any]
     """Try live Polymarket match → propose-market fallback. Returns (block, text-context)."""
     try:
         live = await match_to_live_market(sub)
-    except Exception:
+    except Exception as exc:
+        warn("polymarket.match", exc)
         live = None
     if live is not None:
         market = {
@@ -92,7 +116,8 @@ async def _market_context_for(sub: list[dict[str, Any]]) -> tuple[dict[str, Any]
                 entities=[],
             )
         )
-    except Exception:
+    except Exception as exc:
+        warn("polymarket.propose", exc)
         return None, ""
     market = {
         "proposed_market_slug": proposed.slug,
@@ -102,48 +127,64 @@ async def _market_context_for(sub: list[dict[str, Any]]) -> tuple[dict[str, Any]
     return market, ctx
 
 
-async def run_story(dedup_hash: str | None = None) -> dict[str, Any]:
-    """Pick a cluster (by hash or top-ranked), produce the brief, write the folder."""
+def _print_key_status() -> None:
     s = get_settings()
-    await init_db()
-    raw = await list_articles(limit=600)
-    if not raw:
-        return {"ok": False, "reason": "no articles in DB — run `ingest` first"}
-    articles = sort_articles_newest_first(
-        enrich_lean_from_feeds([a.model_dump() if hasattr(a, "model_dump") else dict(a) for a in raw])
-    )
-    embeddings = await embed_texts(
-        [(a.get("title") or "") + " " + (a.get("summary") or "")[:200] for a in articles]
-    )
-    candidates = discover_story_candidates(articles, embeddings, poc_mode=True)
-    if not candidates:
-        return {"ok": False, "reason": "no cohesion-passing candidates"}
-
-    chosen: StoryCandidate | None = None
-    if dedup_hash:
-        for c in candidates:
-            if c.dedup_hash == dedup_hash:
-                chosen = c
-                break
-        if chosen is None:
-            return {"ok": False, "reason": f"no candidate matches dedup_hash={dedup_hash}"}
+    oa = "yes" if s.has_openai else "no"
+    an = "yes" if s.has_anthropic else "no"
+    if s.has_openai and s.has_anthropic:
+        suffix = "using both"
+    elif s.has_openai:
+        suffix = "routing conversation+proposer through OpenAI"
+    elif s.has_anthropic:
+        suffix = "routing brief through Anthropic (no hero image, no sora)"
     else:
-        chosen = candidates[0]
+        suffix = "no providers — pipeline will fail"
+    step(f"keys: openai={oa}, anthropic={an} ({suffix})")
 
+
+async def _run_one(
+    chosen: StoryCandidate,
+    articles: list[dict[str, Any]],
+    *,
+    idx: int | None = None,
+    total: int | None = None,
+) -> dict[str, Any]:
+    """Run one chosen candidate end-to-end. Single-story flow used by both
+    ``run_story`` and ``run_multiple`` so the progress prints stay consistent."""
+    s = get_settings()
+    prefix = f"[{idx}/{total}] " if idx and total else ""
     sub = [articles[i] for i in chosen.indices]
-    sources = await _build_sources(sub)
+    headline = (sub[0].get("title") or "").strip().split("\n", 1)[0][:70]
+    step(
+        f"{prefix}cluster {_short_hash(chosen.dedup_hash)} "
+        f"({len(sub)} sources, sim {chosen.mean_pairwise_sim:.2f}): {headline}"
+    )
 
-    client = AsyncOpenAI(api_key=s.openai_api_key) if not s.dry_run else None
+    sources = await _build_sources(sub)
+    client = AsyncOpenAI(api_key=s.openai_api_key) if s.has_openai else None
+
     market, market_context = await _market_context_for(sub)
-    brief = await write_brief(
-        client or AsyncOpenAI(api_key="dry-run"),
-        sources,
-        market_context=market_context,
+    if market and market.get("market_url"):
+        price = market.get("price_cents")
+        price_s = f" @ {price}c" if price is not None else ""
+        step(f"polymarket: live match -> {market.get('question', '')[:60]}{price_s}", indent=1)
+    elif market and market.get("proposed_market_slug"):
+        step(f"polymarket: proposed -> {market['proposed_market_slug']}", indent=1)
+    else:
+        step("polymarket: no angle", indent=1)
+
+    brief = await write_brief(client, sources, market_context=market_context)
+    meta = brief.get("_meta") or {}
+    step(
+        f"brief: {meta.get('model', 'openai')} "
+        f"({meta.get('tokens_in', 0)} tokens in, {meta.get('tokens_out', 0)} out)",
+        indent=1,
     )
 
     cluster_summary = "\n".join(
         f"[{src['outlet_id']}] {src['title']}" for src in sources[:10]
     )
+    conversation_dict: dict[str, Any] | None
     try:
         personas = load_personas()
         panel = personas[:4] if personas else []
@@ -152,6 +193,12 @@ async def run_story(dedup_hash: str | None = None) -> dict[str, Any]:
                 panel,
                 summary=f"{brief.get('hook', '')}\n\n{cluster_summary}",
                 market_context=market_context or "",
+            )
+            consensus = transcript.consensus_probability_pct
+            consensus_s = f"consensus {consensus}c YES" if consensus is not None else transcript.ended_reason
+            step(
+                f"panel: {len(panel)} personas, {len(transcript.turns)} turns, {consensus_s}",
+                indent=1,
             )
             conversation_dict = transcript.as_dict()
             conversation_dict["turns"] = [
@@ -165,21 +212,62 @@ async def run_story(dedup_hash: str | None = None) -> dict[str, Any]:
             ]
         else:
             conversation_dict = {"warning": "no personas loaded"}
+            warn("panel", "no personas loaded")
     except Exception as exc:
+        warn("panel", exc)
         conversation_dict = {"error": f"{type(exc).__name__}: {exc}"}
 
-    # Render hero image
     day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     hook = brief.get("hook") or sub[0].get("title", "event")
     event_id = f"{day}-{_slugify(hook)}"
     folder = s.output_dir / event_id
     folder.mkdir(parents=True, exist_ok=True)
-    hero_path = folder / "hero.png"
-    try:
-        await render_hero(brief.get("hero_image_prompt") or hook, hero_path)
-    except Exception as exc:
-        hero_path = None
-        brief.setdefault("_warnings", []).append(f"hero render failed: {exc}")
+
+    hero_path: Path | None = None
+    hero_skip_reason: str | None = None
+    if not s.has_openai:
+        hero_skip_reason = "no OPENAI_API_KEY in .env"
+        step("hero: skipped (no OPENAI_API_KEY)", indent=1)
+    else:
+        candidate_hero = folder / "hero.png"
+        try:
+            result = await render_hero(brief.get("hero_image_prompt") or hook, candidate_hero)
+            if result is not None:
+                hero_path = result
+                step(f"hero: rendered {hero_path.name}", indent=1)
+            else:
+                hero_skip_reason = "hero render returned no image"
+                warn("hero", "renderer returned None")
+        except Exception as exc:
+            warn("hero", exc)
+            hero_skip_reason = f"image generation failed: {type(exc).__name__}"
+            brief.setdefault("_warnings", []).append(f"hero render failed: {exc}")
+
+    video_path: Path | None = None
+    higgs = brief.get("higgsfield") or {}
+    if not s.has_openai:
+        step("sora: skipped (no OPENAI_API_KEY)", indent=1)
+    elif not s.enable_sora_render:
+        step("sora: skipped (ENABLE_SORA_RENDER=false)", indent=1)
+    elif hero_path is None:
+        step("sora: skipped (no hero image)", indent=1)
+    else:
+        candidate_video = folder / "video.mp4"
+        try:
+            result = await render_video(
+                prompt=str(higgs.get("prompt") or hook),
+                hero_path=hero_path,
+                out_path=candidate_video,
+                aspect_ratio=str(higgs.get("aspect_ratio") or "9:16"),
+                duration_s=int(higgs.get("duration_s") or 8),
+            )
+            video_path = result
+        except Exception as exc:
+            warn("sora", exc)
+            video_path = None
+
+    # Drop transient meta before writing — it's not part of the deliverable.
+    brief.pop("_meta", None)
 
     write_event(
         folder,
@@ -189,8 +277,11 @@ async def run_story(dedup_hash: str | None = None) -> dict[str, Any]:
         conversation=conversation_dict,
         market=market,
         hero_path=hero_path,
+        video_path=video_path,
+        hero_skip_reason=hero_skip_reason,
     )
     write_index(s.output_dir)
+    step(f"-> output/{folder.name}/", indent=1)
 
     return {
         "ok": True,
@@ -200,15 +291,122 @@ async def run_story(dedup_hash: str | None = None) -> dict[str, Any]:
         "sources": len(sources),
         "outlets": list(chosen.outlets),
         "mean_pairwise_sim": chosen.mean_pairwise_sim,
+        "video_rendered": bool(video_path),
     }
+
+
+async def _load_articles_and_candidates() -> tuple[list[dict[str, Any]], list[StoryCandidate]]:
+    await init_db()
+    raw = await list_articles(limit=600)
+    if not raw:
+        return [], []
+    articles = sort_articles_newest_first(
+        enrich_lean_from_feeds([a.model_dump() if hasattr(a, "model_dump") else dict(a) for a in raw])
+    )
+    embeddings = await embed_texts(
+        [(a.get("title") or "") + " " + (a.get("summary") or "")[:200] for a in articles]
+    )
+    candidates = discover_story_candidates(articles, embeddings, poc_mode=True)
+    return articles, candidates
+
+
+async def run_story(dedup_hash: str | None = None) -> dict[str, Any]:
+    """Pick a cluster (by hash or top-ranked), produce the brief, write the folder."""
+    _print_key_status()
+    articles, candidates = await _load_articles_and_candidates()
+    if not articles:
+        warn("cluster", "no articles in DB — run `ingest` first")
+        return {"ok": False, "reason": "no articles in DB — run `ingest` first"}
+    if not candidates:
+        warn("cluster", "no cohesion-passing candidates")
+        return {"ok": False, "reason": "no cohesion-passing candidates"}
+
+    step(f"cluster: {len(articles)} articles -> {len(candidates)} candidates")
+
+    chosen: StoryCandidate | None = None
+    if dedup_hash:
+        for c in candidates:
+            if c.dedup_hash == dedup_hash:
+                chosen = c
+                break
+        if chosen is None:
+            return {"ok": False, "reason": f"no candidate matches dedup_hash={dedup_hash}"}
+    else:
+        chosen = candidates[0]
+
+    return await _run_one(chosen, articles, idx=1, total=1)
+
+
+async def run_multiple(n: int = 5) -> list[dict[str, Any]]:
+    """Run up to ``n`` cohesion-passing candidates, skipping sibling clusters.
+
+    Two candidates whose article-index sets have Jaccard overlap above
+    ``SIBLING_JACCARD_THRESHOLD`` are treated as the same story (one cluster
+    drawn slightly differently) and we walk further down the ranked list to
+    fill ``n`` truly distinct stories.
+    """
+    _print_key_status()
+    articles, candidates = await _load_articles_and_candidates()
+    if not articles:
+        warn("cluster", "no articles in DB — run `ingest` first")
+        return [{"ok": False, "reason": "no articles in DB — run `ingest` first"}]
+    if not candidates:
+        warn("cluster", "no cohesion-passing candidates")
+        return [{"ok": False, "reason": "no cohesion-passing candidates"}]
+
+    step(f"cluster: {len(articles)} articles -> {len(candidates)} candidates, picking top {n}")
+
+    picked: list[StoryCandidate] = []
+    skipped_siblings = 0
+    for c in candidates:
+        if len(picked) >= n:
+            break
+        if any(_jaccard(c.indices, p.indices) > SIBLING_JACCARD_THRESHOLD for p in picked):
+            skipped_siblings += 1
+            continue
+        picked.append(c)
+    if skipped_siblings:
+        step(f"cluster: skipped {skipped_siblings} sibling cluster(s)")
+    if not picked:
+        return [{"ok": False, "reason": "no distinct candidates after sibling dedup"}]
+    if len(picked) < n:
+        step(f"cluster: only {len(picked)} distinct candidates available (wanted {n})")
+
+    results: list[dict[str, Any]] = []
+    for i, c in enumerate(picked, 1):
+        try:
+            r = await _run_one(c, articles, idx=i, total=len(picked))
+        except Exception as exc:
+            warn(f"story[{i}]", exc)
+            r = {"ok": False, "dedup_hash": c.dedup_hash, "error": f"{type(exc).__name__}: {exc}"}
+        results.append(r)
+    return results
+
+
+def _sum_new(results: dict[str, dict]) -> int:
+    return sum(int(v.get("new_count", 0) or 0) for v in results.values())
 
 
 async def run_ingest() -> dict[str, Any]:
     """Poll RSS + X/Nitter once. Updates the sqlite DB."""
     await init_db()
-    rss_count = await poll_rss()
     try:
-        x_count = await poll_all_twitter()
-    except Exception:
-        x_count = 0
-    return {"ok": True, "rss_new": rss_count, "x_new": x_count}
+        rss_results = await poll_rss()
+    except Exception as exc:
+        warn("ingest.rss", exc)
+        rss_results = {}
+    try:
+        x_results = await poll_all_twitter()
+    except Exception as exc:
+        warn("ingest.twitter", exc)
+        x_results = {}
+    rss_new = _sum_new(rss_results)
+    x_new = _sum_new(x_results)
+    step(f"ingest: rss {rss_new} new, x {x_new} new")
+    return {
+        "ok": True,
+        "rss_new": rss_new,
+        "x_new": x_new,
+        "rss_outlets": len(rss_results),
+        "x_outlets": len(x_results),
+    }

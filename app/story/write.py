@@ -155,13 +155,17 @@ def write_event(
     conversation: dict[str, Any] | None,
     market: dict[str, Any] | None,
     hero_path: Path | None,
+    video_path: Path | None = None,
+    hero_skip_reason: str | None = None,
 ) -> None:
-    """Emit the four output files for one event."""
+    """Emit the four output files for one event (plus ``video.mp4`` when Sora ran)."""
     folder.mkdir(parents=True, exist_ok=True)
 
     higgs = dict(brief.get("higgsfield") or {})
     if hero_path and hero_path.exists():
         higgs["ref_image_path"] = f"./{hero_path.name}"
+    if video_path and video_path.exists():
+        higgs["video_path"] = f"./{video_path.name}"
     if market:
         higgs["polymarket"] = market
     (folder / "higgsfield.json").write_text(
@@ -200,7 +204,21 @@ def write_event(
     higgs_ratio = higgs_summary.get("aspect_ratio") or "9:16"
     higgs_dur = higgs_summary.get("duration_s") or 5
 
-    hero_block = f"![hero](./{hero_path.name})" if hero_path and hero_path.exists() else "_(no hero rendered)_"
+    if hero_path and hero_path.exists():
+        hero_block = f"![hero](./{hero_path.name})"
+    elif hero_skip_reason:
+        hero_block = f"_hero skipped — {hero_skip_reason}_"
+    else:
+        hero_block = "_(no hero rendered)_"
+
+    video_block = ""
+    if video_path and video_path.exists():
+        video_block = (
+            "\n## Video\n\n"
+            f"Rendered by Sora 2 ({higgs_camera}, {higgs_ratio}, {higgs_dur}s). "
+            f"File: [`{video_path.name}`](./{video_path.name}).\n\n"
+            f"![preview](./{video_path.name})\n"
+        )
 
     body = f"""# {hook}
 
@@ -233,10 +251,10 @@ def write_event(
 - camera: `{higgs_camera}`
 - aspect: `{higgs_ratio}`
 - duration: `{higgs_dur}s`
-- ref image: `./{hero_path.name if hero_path else 'hero.png'}`
+- ref image: {f"`./{hero_path.name}`" if hero_path and hero_path.exists() else "_none — Higgsfield will need an external reference still_"}
 
 Drop `higgsfield.json` into the Higgsfield API to render.
-
+{video_block}
 _Event ID: `{event_id}`._
 """
     (folder / "README.md").write_text(body, encoding="utf-8")
