@@ -19,6 +19,7 @@ and the pipeline keeps going where it sanely can.
 
 from __future__ import annotations
 
+import asyncio
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -146,17 +147,25 @@ async def _run_one(
     chosen: StoryCandidate,
     articles: list[dict[str, Any]],
     *,
-    idx: int | None = None,
-    total: int | None = None,
+    log_tag: str = "",
 ) -> dict[str, Any]:
-    """Run one chosen candidate end-to-end. Single-story flow used by both
-    ``run_story`` and ``run_multiple`` so the progress prints stay consistent."""
+    """Run one chosen candidate end-to-end.
+
+    Every progress line is prefixed with ``log_tag`` (e.g. ``"[2/5]"``) so
+    parallel runs stay readable as their output interleaves on stdout.
+    """
     s = get_settings()
-    prefix = f"[{idx}/{total}] " if idx and total else ""
+
+    def _say(msg: str, *, indent: int = 0) -> None:
+        step(f"{log_tag} {msg}".strip() if log_tag else msg, indent=indent)
+
+    def _warn(where: str, exc: BaseException | str) -> None:
+        warn(f"{log_tag} {where}".strip() if log_tag else where, exc)
+
     sub = [articles[i] for i in chosen.indices]
     headline = (sub[0].get("title") or "").strip().split("\n", 1)[0][:70]
-    step(
-        f"{prefix}cluster {_short_hash(chosen.dedup_hash)} "
+    _say(
+        f"cluster {_short_hash(chosen.dedup_hash)} "
         f"({len(sub)} sources, sim {chosen.mean_pairwise_sim:.2f}): {headline}"
     )
 
@@ -167,15 +176,15 @@ async def _run_one(
     if market and market.get("market_url"):
         price = market.get("price_cents")
         price_s = f" @ {price}c" if price is not None else ""
-        step(f"polymarket: live match -> {market.get('question', '')[:60]}{price_s}", indent=1)
+        _say(f"polymarket: live match -> {market.get('question', '')[:60]}{price_s}", indent=1)
     elif market and market.get("proposed_market_slug"):
-        step(f"polymarket: proposed -> {market['proposed_market_slug']}", indent=1)
+        _say(f"polymarket: proposed -> {market['proposed_market_slug']}", indent=1)
     else:
-        step("polymarket: no angle", indent=1)
+        _say("polymarket: no angle", indent=1)
 
     brief = await write_brief(client, sources, market_context=market_context)
     meta = brief.get("_meta") or {}
-    step(
+    _say(
         f"brief: {meta.get('model', 'openai')} "
         f"({meta.get('tokens_in', 0)} tokens in, {meta.get('tokens_out', 0)} out)",
         indent=1,
@@ -201,7 +210,7 @@ async def _run_one(
             outcome = transcript.ended_reason
             if consensus is not None:
                 outcome = f"{transcript.ended_reason} -> {consensus}c YES"
-            step(
+            _say(
                 f"panel: {len(panel)} personas{tag_da}, {len(transcript.turns)} turns, {outcome}",
                 indent=1,
             )
@@ -218,9 +227,9 @@ async def _run_one(
             ]
         else:
             conversation_dict = {"warning": "no personas loaded"}
-            warn("panel", "no personas loaded")
+            _warn("panel", "no personas loaded")
     except Exception as exc:
-        warn("panel", exc)
+        _warn("panel", exc)
         conversation_dict = {"error": f"{type(exc).__name__}: {exc}"}
 
     day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -233,30 +242,30 @@ async def _run_one(
     hero_skip_reason: str | None = None
     if not s.has_openai:
         hero_skip_reason = "no OPENAI_API_KEY in .env"
-        step("hero: skipped (no OPENAI_API_KEY)", indent=1)
+        _say("hero: skipped (no OPENAI_API_KEY)", indent=1)
     else:
         candidate_hero = folder / "hero.png"
         try:
             result = await render_hero(brief.get("hero_image_prompt") or hook, candidate_hero)
             if result is not None:
                 hero_path = result
-                step(f"hero: rendered {hero_path.name}", indent=1)
+                _say(f"hero: rendered {hero_path.name}", indent=1)
             else:
                 hero_skip_reason = "hero render returned no image"
-                warn("hero", "renderer returned None")
+                _warn("hero", "renderer returned None")
         except Exception as exc:
-            warn("hero", exc)
+            _warn("hero", exc)
             hero_skip_reason = f"image generation failed: {type(exc).__name__}"
             brief.setdefault("_warnings", []).append(f"hero render failed: {exc}")
 
     video_path: Path | None = None
     higgs = brief.get("higgsfield") or {}
     if not s.has_openai:
-        step("sora: skipped (no OPENAI_API_KEY)", indent=1)
+        _say("sora: skipped (no OPENAI_API_KEY)", indent=1)
     elif not s.enable_sora_render:
-        step("sora: skipped (ENABLE_SORA_RENDER=false)", indent=1)
+        _say("sora: skipped (ENABLE_SORA_RENDER=false)", indent=1)
     elif hero_path is None:
-        step("sora: skipped (no hero image)", indent=1)
+        _say("sora: skipped (no hero image)", indent=1)
     else:
         candidate_video = folder / "video.mp4"
         try:
@@ -269,7 +278,7 @@ async def _run_one(
             )
             video_path = result
         except Exception as exc:
-            warn("sora", exc)
+            _warn("sora", exc)
             video_path = None
 
     # Drop transient meta before writing — it's not part of the deliverable.
@@ -286,8 +295,7 @@ async def _run_one(
         video_path=video_path,
         hero_skip_reason=hero_skip_reason,
     )
-    write_index(s.output_dir)
-    step(f"-> output/{folder.name}/", indent=1)
+    _say(f"-> output/{folder.name}/", indent=1)
 
     return {
         "ok": True,
@@ -340,17 +348,27 @@ async def run_story(dedup_hash: str | None = None) -> dict[str, Any]:
     else:
         chosen = candidates[0]
 
-    return await _run_one(chosen, articles, idx=1, total=1)
+    result = await _run_one(chosen, articles, log_tag="")
+    write_index(get_settings().output_dir)
+    return result
 
 
 async def run_multiple(n: int = 5) -> list[dict[str, Any]]:
-    """Run up to ``n`` cohesion-passing candidates, skipping sibling clusters.
+    """Run up to ``n`` cohesion-passing candidates concurrently, skipping siblings.
 
     Two candidates whose article-index sets have Jaccard overlap above
     ``SIBLING_JACCARD_THRESHOLD`` are treated as the same story (one cluster
     drawn slightly differently) and we walk further down the ranked list to
     fill ``n`` truly distinct stories.
+
+    Stories run inside an ``asyncio.gather`` bounded by an ``asyncio.Semaphore``
+    sized to ``settings.max_parallel_stories`` (default 3) — so we get the
+    speedup without hammering provider rate limits. Each story's ``step()``
+    lines carry a ``[i/N]`` prefix so interleaved output is still followable,
+    and the top-level ``output/README.md`` index is rebuilt exactly once after
+    the batch completes.
     """
+    s = get_settings()
     _print_key_status()
     articles, candidates = await _load_articles_and_candidates()
     if not articles:
@@ -378,14 +396,34 @@ async def run_multiple(n: int = 5) -> list[dict[str, Any]]:
     if len(picked) < n:
         step(f"cluster: only {len(picked)} distinct candidates available (wanted {n})")
 
-    results: list[dict[str, Any]] = []
-    for i, c in enumerate(picked, 1):
-        try:
-            r = await _run_one(c, articles, idx=i, total=len(picked))
-        except Exception as exc:
-            warn(f"story[{i}]", exc)
-            r = {"ok": False, "dedup_hash": c.dedup_hash, "error": f"{type(exc).__name__}: {exc}"}
-        results.append(r)
+    concurrency = max(1, int(s.max_parallel_stories))
+    sem = asyncio.Semaphore(concurrency)
+    step(f"parallel: running {len(picked)} stories, up to {concurrency} at once")
+
+    async def _wrap(idx: int, candidate: StoryCandidate) -> dict[str, Any]:
+        tag = f"[{idx}/{len(picked)}]"
+        async with sem:
+            try:
+                return await _run_one(candidate, articles, log_tag=tag)
+            except Exception as exc:
+                warn(f"{tag} story", exc)
+                return {
+                    "ok": False,
+                    "dedup_hash": candidate.dedup_hash,
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+
+    results: list[dict[str, Any]] = await asyncio.gather(
+        *[_wrap(i, c) for i, c in enumerate(picked, 1)]
+    )
+
+    # Rebuild the top-level index exactly once after the batch — saves N writes
+    # to the same file and avoids any chance of races between parallel workers.
+    try:
+        write_index(s.output_dir)
+    except Exception as exc:
+        warn("index", exc)
+
     return results
 
 

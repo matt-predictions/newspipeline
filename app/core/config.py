@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     sora_max_wait_s: int = Field(default=600, alias="SORA_MAX_WAIT_S")
     sora_poll_interval_s: float = Field(default=10.0, alias="SORA_POLL_INTERVAL_S")
 
+    max_parallel_stories: int = Field(default=3, alias="MAX_PARALLEL_STORIES")
+
     project_root: Path = Field(
         default_factory=lambda: Path(__file__).resolve().parent.parent.parent
     )
