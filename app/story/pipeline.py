@@ -29,6 +29,7 @@ from typing import Any
 from openai import AsyncOpenAI
 
 from app.agents.brief import write_brief
+from app.agents.jjj import edit_brief
 from app.cluster.candidates import (
     StoryCandidate,
     discover_story_candidates,
@@ -231,6 +232,24 @@ async def _run_one(
     except Exception as exc:
         _warn("panel", exc)
         conversation_dict = {"error": f"{type(exc).__name__}: {exc}"}
+
+    # JJJ — editor pass between panel and hero. Polishes hook + higgsfield
+    # prompt only; hero_image_prompt is intentionally left untouched.
+    if conversation_dict and conversation_dict.get("turns"):
+        try:
+            await edit_brief(client, brief, conversation_dict)
+            jjj = brief.get("_jjj") or {}
+            if jjj.get("error"):
+                _warn("jjj", jjj["error"])
+            else:
+                _say(
+                    "jjj: edited hook + higgsfield prompt "
+                    f"(tokens {jjj.get('tokens_in', 0)} in / "
+                    f"{jjj.get('tokens_out', 0)} out)",
+                    indent=1,
+                )
+        except Exception as exc:
+            _warn("jjj", exc)
 
     day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     hook = brief.get("hook") or sub[0].get("title", "event")

@@ -243,6 +243,12 @@ def write_event(
             f"![preview](./{video_path.name})\n"
         )
 
+    jjj = brief.get("_jjj") or {}
+    jjj_line = ""
+    jjj_notes = (jjj.get("notes") or "").strip() if isinstance(jjj, dict) else ""
+    if jjj_notes:
+        jjj_line = f"\n_Edited by JJJ: {jjj_notes}_\n"
+
     body = f"""# {hook}
 
 **Who's posting:** {outlets_line}  
@@ -277,7 +283,7 @@ def write_event(
 - ref image: {f"`./{hero_path.name}`" if hero_path and hero_path.exists() else "_none — Higgsfield will need an external reference still_"}
 
 Drop `higgsfield.json` into the Higgsfield API to render.
-{video_block}
+{video_block}{jjj_line}
 _Event ID: `{event_id}`._
 """
     (folder / "README.md").write_text(body, encoding="utf-8")
