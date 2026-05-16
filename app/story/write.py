@@ -102,12 +102,9 @@ def _format_cross_outlet(brief: dict[str, Any]) -> str:
 
 
 _ENDED_REASON_PHRASE: dict[str, str] = {
-    "da_swayed": "Room swayed the devil's advocate",
-    "room_swayed": "Devil's advocate swayed the room",
-    "stalemate": "Stalemate — no convergence",
-    "consensus": "Panel converged",
+    "stalemate": "Stalemate — no convergence inside the turn cap",
+    "consensus": "Panel converged via explicit agreement round",
     "repetition": "Debate stalled — repeated arguments",
-    "max_turns": "Hit turn cap before consensus",
     "no_panel": "No panel available",
 }
 
@@ -123,6 +120,10 @@ def _format_conversation(conversation: dict[str, Any] | None) -> str:
     panel = conversation.get("panel") or []
     da_id = conversation.get("devil_advocate_id")
     ended = str(conversation.get("ended_reason") or "")
+    convergence_note = (conversation.get("convergence_note") or "").strip()
+    debate_turns = [t for t in turns if not t.get("is_agreement_turn")]
+    agreement_turns = [t for t in turns if t.get("is_agreement_turn")]
+
     head: list[str] = []
     if panel:
         # Mark the chosen panelist inline so readers see "walter 🔥" rather than just a name.
@@ -137,16 +138,30 @@ def _format_conversation(conversation: dict[str, Any] | None) -> str:
         head.append(f"**Outcome:** {phrase} — final read **{consensus}c YES**")
     else:
         head.append(f"**Outcome:** {phrase}")
+    head.append(
+        f"**Turns:** {len(debate_turns)} debate + {len(agreement_turns)} agreement = {len(turns)} total"
+    )
+    if convergence_note:
+        head.append(f"**Trajectory:** _{convergence_note}_")
     if moderator:
         head.append(f"**Take:** {moderator}")
-    body: list[str] = []
-    for t in turns:
+
+    def _line(t: dict[str, Any]) -> str:
         pid = t.get("persona_id", "?")
         pct = t.get("probability_pct")
         pct_str = f" ({pct}c)" if pct is not None else ""
         badge = " 🔥" if t.get("is_devil_advocate") else ""
-        body.append(f"- **{pid}**{badge}{pct_str}: {t.get('text', '').strip()}")
-    return "\n".join(head) + "\n\n" + "\n".join(body)
+        return f"- **{pid}**{badge}{pct_str}: {t.get('text', '').strip()}"
+
+    body_lines: list[str] = []
+    if debate_turns:
+        body_lines.append("### Debate")
+        body_lines.extend(_line(t) for t in debate_turns)
+    if agreement_turns:
+        body_lines.append("")
+        body_lines.append("### Agreement round")
+        body_lines.extend(_line(t) for t in agreement_turns)
+    return "\n".join(head) + "\n\n" + "\n".join(body_lines)
 
 
 def _format_market(market: dict[str, Any] | None) -> str:

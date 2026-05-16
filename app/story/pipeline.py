@@ -227,6 +227,7 @@ async def _run_one(
                     "text": t.text,
                     "probability_pct": t.probability_pct,
                     "is_devil_advocate": t.is_devil_advocate,
+                    "is_agreement_turn": t.is_agreement_turn,
                 }
                 for t in transcript.turns
             ]
