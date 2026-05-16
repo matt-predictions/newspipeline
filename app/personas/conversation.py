@@ -300,6 +300,63 @@ def _ready_for_agreement(
     return (max(vals) - min(vals)) <= CONSENSUS_SPREAD_CENTS
 
 
+def _should_force_agreement(
+    turns: list[ConversationTurn],
+    *,
+    panel_ids: set[str],
+    min_debate_total: int,
+    re_entry_debate_threshold: int | None,
+    max_turns: int,
+) -> bool:
+    """True iff we should fire agreement at the budget edge despite wide spread.
+
+    The empirical failure mode this addresses: a debate runs the full
+    max-turn budget without the strict ``CONSENSUS_SPREAD_CENTS`` ever
+    closing, so the conversation silently rolls to ``stalemate`` with
+    ``agreement_turns: 0`` — the explicit "lock in or break consensus"
+    round never gets to try. Half the empirical stalemate cases fit this
+    pattern (probabilities froze mid-debate, or two camps slowly
+    diverged), and in every one the agreement prompt's stronger framing
+    was the obvious tool we never reached for.
+
+    Fires when:
+    - every persona has spoken ``MIN_TURNS_PER_PERSONA`` debate turns
+    - any re-entry debate-turn floor has been burned
+    - the remaining budget is exactly enough for one full agreement round
+      (``max_turns - len(turns) <= len(panel_ids)``)
+    - debate spread is wider than ``CONSENSUS_SPREAD_CENTS`` (otherwise
+      ``_ready_for_agreement`` already fired)
+
+    The agreement prompt requires each persona to either lock in within
+    ``AGREEMENT_TOLERANCE_PP`` of the running median or break consensus
+    with a NEW objection — so a forced agreement still produces an honest
+    ``stalemate`` if the panel genuinely can't converge, but gives them
+    a real shot at closing the gap that the debate-phase prompt couldn't.
+    """
+    debate = _debate_turns(turns)
+    if len(debate) < min_debate_total:
+        return False
+    if re_entry_debate_threshold is not None and len(debate) < re_entry_debate_threshold:
+        return False
+    if max_turns - len(turns) > len(panel_ids):
+        return False
+    if max_turns - len(turns) < len(panel_ids):
+        # No room left even for one agreement round — too late.
+        return False
+    counts: dict[str, int] = {}
+    for t in debate:
+        counts[t.persona_id] = counts.get(t.persona_id, 0) + 1
+    if any(counts.get(pid, 0) < MIN_TURNS_PER_PERSONA for pid in panel_ids):
+        return False
+    last = _last_prob_per_persona(debate)
+    if len(last) < len(panel_ids):
+        return False
+    # Already-ready debates are handled by `_ready_for_agreement`; this
+    # function fires ONLY when the strict spread check would refuse.
+    vals = list(last.values())
+    return (max(vals) - min(vals)) > CONSENSUS_SPREAD_CENTS
+
+
 def _converged_median(turns: list[ConversationTurn], panel_ids: set[str]) -> int | None:
     """Median of each persona's most-recent debate-phase pct."""
     last = _last_prob_per_persona(_debate_turns(turns))
@@ -695,6 +752,19 @@ async def run_conversation(
                 converged_median = _converged_median(transcript.turns, panel_ids)
                 phase = "agreement"
                 agreement_queue = _build_agreement_order(panel_personas, da_id)
+            elif _should_force_agreement(
+                transcript.turns,
+                panel_ids=panel_ids,
+                min_debate_total=min_debate_total,
+                re_entry_debate_threshold=re_entry_debate_threshold,
+                max_turns=max_turns,
+            ):
+                # Budget edge with wide spread: give the agreement prompt
+                # one explicit shot at closing the gap rather than rolling
+                # silently to stalemate with `agreement_turns: 0`.
+                converged_median = _converged_median(transcript.turns, panel_ids) or 50
+                phase = "agreement"
+                agreement_queue = _build_agreement_order(panel_personas, da_id)
         else:
             if agreement_queue:
                 persona = agreement_queue.pop(0)
@@ -723,7 +793,15 @@ async def run_conversation(
                         on_turn(turn, "agreement", ag_idx, len(transcript.turns))
                     except Exception:
                         pass
-            else:
+            if not agreement_queue:
+                # Evaluate the agreement outcome IMMEDIATELY when the queue
+                # drains — not in a separate loop iteration. With budget-edge
+                # forced agreement, ``len(turns) == max_turns`` right after the
+                # final agreement turn is appended, so the next while-loop
+                # iteration never runs and the held-check would be silently
+                # skipped (panels that locked in cleanly inside 5pp would
+                # report ``stalemate`` despite hitting consensus). This is the
+                # bug the forced-agreement path exposed.
                 ag = _agreement_turns(transcript.turns)
                 # Only count the MOST RECENT agreement attempt (post any re-entry).
                 # After re-entry there will be exactly len(panel) fresh ag turns.
@@ -741,7 +819,11 @@ async def run_conversation(
                     transcript.consensus_probability_pct = _median_int(pcts)
                     transcript.ended_reason = "consensus"
                     phase = "ended"
-                elif not re_entry_used:
+                elif not re_entry_used and max_turns - len(transcript.turns) >= RE_ENTRY_DEBATE_TURNS + len(panel_personas):
+                    # Only re-enter debate if there's actually budget for
+                    # ``RE_ENTRY_DEBATE_TURNS`` + a second agreement round.
+                    # Otherwise the re-entry is just throat-clearing before
+                    # an inevitable stalemate.
                     re_entry_used = True
                     re_entry_debate_threshold = (
                         len(_debate_turns(transcript.turns)) + RE_ENTRY_DEBATE_TURNS
