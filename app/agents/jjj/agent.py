@@ -1,21 +1,24 @@
 """JJJ — post-panel editor agent.
 
-After the persona panel concludes, JJJ takes the draft brief and the panel
-transcript and rewrites two fields:
+After the persona panel concludes, JJJ takes the draft brief and the
+panel transcript and rewrites two fields:
 
 - ``hook`` — punchier, ≤ 100 chars, declarative (no hedging)
-- ``higgsfield.prompt`` — sharper video prompt, tighter language, leaning
-  into whichever framing WON the debate (DA-swayed → DA's framing; room-
-  swayed → consensus framing; stalemate → the higher-stakes framing)
+- ``higgsfield.prompt`` — sharper video prompt, tighter language,
+  leaning into whichever framing WON the debate (see ``skill.md``
+  alongside this file for the decision rule on ``ended_reason``)
 
 ONE LLM call. Provider routing matches ``brief.py`` (OpenAI preferred,
-Anthropic fallback). JJJ preserves facts and entities verbatim — they only
-sharpen voice and structure. The hero_image_prompt is intentionally left
-alone (the hero has already been considered and we don't want JJJ to
-re-roll the visual brief).
+Anthropic fallback). JJJ preserves facts and entities verbatim — they
+only sharpen voice and structure. The ``hero_image_prompt`` is
+intentionally left alone (the hero has already been considered and we
+don't want JJJ to re-roll the visual brief).
 
-Editor notes are stashed at ``brief["_jjj"]`` so we can surface them in the
-event README footer.
+Editor notes are stashed at ``brief["_jjj"]`` so we can surface them
+in the event README footer.
+
+This file is the agent logic. The persona card lives next to it as
+``persona.md`` + ``skill.md`` (loaded by ``app.agents._loader``).
 """
 
 from __future__ import annotations
@@ -32,8 +35,8 @@ from app.agents.base import (
     rough_cost_cents,
     text_from_anthropic,
 )
+from app.agents.schemas import JJJEdit, StructuredOutputError, parse_structured
 from app.core.config import get_settings
-from app.core.jsonx import extract_json_object
 from app.prompts import load_prompt
 
 
@@ -182,10 +185,14 @@ async def edit_brief(
         brief.setdefault("_jjj", {})["error"] = f"{type(exc).__name__}: {exc}"
         return brief
 
-    data = extract_json_object(text) or {}
-    new_hook = str(data.get("hook") or "").strip()
-    new_prompt = str(data.get("higgsfield_prompt") or "").strip()
-    notes = str(data.get("edit_notes") or "").strip()
+    try:
+        parsed = parse_structured(text, JJJEdit)
+    except StructuredOutputError as exc:
+        brief.setdefault("_jjj", {})["error"] = str(exc)[:300]
+        return brief
+    new_hook = parsed.hook.strip()
+    new_prompt = parsed.higgsfield_prompt.strip()
+    notes = parsed.edit_notes.strip()
 
     if new_hook:
         brief["hook"] = new_hook[:200]

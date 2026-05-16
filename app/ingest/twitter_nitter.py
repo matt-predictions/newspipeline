@@ -187,7 +187,7 @@ def _parse_handle_to_articles(handle: HandleConfig, body: bytes, source_url: str
         published_at = None
         if getattr(entry, "published_parsed", None):
             try:
-                published_at = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
+                published_at = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)  # type: ignore[misc]
             except Exception:
                 pass
         article_id = f"{handle.outlet_id}:{url_h[:12]}:{slugify(title)[:60]}"

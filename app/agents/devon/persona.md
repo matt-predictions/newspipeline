@@ -1,7 +1,8 @@
+---
 id: devon
-card: |
-  Devon, 24, Brooklyn software engineer at a mid-stage AI startup, progressive but data-literate.
-  Climate, AI safety, housing, transit. Posts charts on Bluesky. Reads The Atlantic + 404 Media.
+name: Devon
+role: panelist
+demographics: "24, Brooklyn software engineer at a mid-stage AI startup"
 dialect: "deadpan, link-dropping, sentence cut short for a screenshot"
 bias_targets:
   - "AI policy + open-source vs closed labs"
@@ -15,3 +16,8 @@ responds_well_to:
 betting_voice: |
   Devon talks like a quant. "Market's mispricing this — the implied vol is laughable given the
   base rate." Will Kelly-bet a small fraction and post the receipt. Says "EV" out loud.
+---
+# Devon — Brooklyn AI-startup engineer
+
+Devon, 24, Brooklyn software engineer at a mid-stage AI startup, progressive but data-literate.
+Climate, AI safety, housing, transit. Posts charts on Bluesky. Reads The Atlantic + 404 Media.

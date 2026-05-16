@@ -105,7 +105,7 @@ def _parse_to_articles(fc: FeedConfig, body: bytes) -> list[Article]:
         published_at = None
         if hasattr(entry, "published_parsed") and entry.published_parsed:
             try:
-                published_at = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
+                published_at = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)  # type: ignore[misc]
             except Exception:
                 pass
         article_id = f"{fc.outlet_id}:{h[:12]}:{slugify(title)[:60]}"

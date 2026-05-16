@@ -1,7 +1,8 @@
+---
 id: tom
-card: |
-  Tom, 52, Cleveland HVAC small-business owner, leans conservative. Regulations, fuel, trade.
-  Talks to 30 customers a day. Knows what diesel costs to the cent.
+name: Tom
+role: panelist
+demographics: "52, Cleveland HVAC small-business owner"
 dialect: "blunt, anecdote-first, allergic to jargon"
 bias_targets:
   - "regulations on small business"
@@ -16,3 +17,8 @@ betting_voice: |
   Tom thinks markets are mostly rigged but enjoys when a Polymarket line embarrasses a pundit.
   "If the lifers say 60c, the lifers are lying to you. I'd bet 35c on YES and walk away."
   Uses 'walk away' a lot.
+---
+# Tom — Cleveland HVAC small-business owner
+
+Tom, 52, Cleveland HVAC small-business owner, leans conservative. Regulations, fuel, trade.
+Talks to 30 customers a day. Knows what diesel costs to the cent.

@@ -22,10 +22,11 @@ from app.core.config import get_settings
 
 
 _BRAND_PREFIX = (
-    "EDITORIAL / NEWS ILLUSTRATION — vertical 9:16 reference still, cinematic "
-    "lighting. Background MUST be off-black (#0F1115) edge-to-edge — never "
-    "white, never light gray. Single cyan accent (#1AB4E0) on the focal "
-    "element. Warm orange (#E07A2F) only on risk / alert beats. "
+    "EDITORIAL / NEWS ILLUSTRATION — landscape 16:9 reference still, cinematic "
+    "lighting. The still becomes the first frame of a Higgsfield video, so it "
+    "must compose for 16:9 horizontal. Background MUST be off-black (#0F1115) "
+    "edge-to-edge — never white, never light gray. Single cyan accent (#1AB4E0) "
+    "on the focal element. Warm orange (#E07A2F) only on risk / alert beats. "
     "HARD RULE — NEVER depict any named living public figure in ANY style "
     "(no photoreal, no illustration, no cartoon, no caricature). Use SYMBOLIC "
     "STAND-INS ONLY: solid black silhouettes with a cyan rim-light, empty "
@@ -34,15 +35,18 @@ _BRAND_PREFIX = (
 )
 
 
+# Hero renders are landscape 16:9 so they match the default Higgsfield aspect
+# ratio and the resulting video composes from the same frame. Try
+# largest-landscape first, then square, then fall back.
 _IMAGE_TRY_GPT_IMAGE_1: list[dict[str, Any]] = [
-    {"size": "1024x1536", "quality": "high"},
-    {"size": "1024x1536", "quality": "medium"},
+    {"size": "1536x1024", "quality": "high"},
+    {"size": "1536x1024", "quality": "medium"},
     {"size": "1024x1024", "quality": "high"},
     {"size": "auto", "quality": "auto"},
 ]
 
 _IMAGE_TRY_DALLE3: list[dict[str, Any]] = [
-    {"size": "1024x1792", "quality": "standard"},
+    {"size": "1792x1024", "quality": "standard"},
     {"size": "1024x1024", "quality": "standard"},
 ]
 

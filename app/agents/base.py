@@ -1,19 +1,22 @@
 """Shared agent plumbing.
 
-Every specialist agent (researcher, director, critic, editor, moderator,
-analyst, ...) used to bake its own retry/backoff/fallback logic inline. This
-module is the single shared substrate so future agents inherit the same
-hardening for free.
+Every LLM-calling agent in the pipeline (brief writer, JJJ editor,
+conversation panel, market proposer) routes through this module for
+retry / backoff / token accounting. Keeps the surface area tiny:
 
-Contents:
-- ``anthropic_call_with_retry`` — Anthropic primary→fallback model walk with
-  exponential backoff over overload / rate-limit / 5xx errors.
+- ``anthropic_call_with_retry`` — Anthropic primary→fallback model walk
+  with exponential backoff over overload / rate-limit / 5xx errors.
 - ``openai_chat_with_retry`` — OpenAI chat-completions with the same shape.
-- ``rough_cost_cents`` — coarse $/token estimator so SpendTracker isn't blind.
-- ``SpendTracker`` — in-process counter that records into the SQLite spend
-  table; raises ``BudgetExceeded`` when the daily cap is exceeded.
-- ``AgentResult`` — light dataclass agents return so the orchestrator can keep
-  a structured debate-trace + spend ledger without each agent re-inventing it.
+- ``rough_cost_cents`` — coarse $/token estimator used by the run manifest
+  + spend ledger.
+- ``AgentResult`` / ``make_result`` — light dataclass agents return so the
+  orchestrator can keep a uniform per-step manifest entry.
+
+The old POC carried a ``SpendTracker``, ``BudgetExceeded`` raise, a
+``gather_agents`` helper, and a ``with_anthropic_retry`` shim — none of
+them survived the refactor and they were removed in the modernization
+pass. The per-day spend table in ``app.core.db`` is still wired (manifest
+writes go through it) but is no longer wrapped by a tracker class.
 """
 
 from __future__ import annotations
@@ -21,22 +24,14 @@ from __future__ import annotations
 import asyncio
 import random
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Awaitable, Callable, Iterable
+from typing import Any
 
 from anthropic import APIStatusError as AnthropicAPIStatusError
 from anthropic import AsyncAnthropic
 from openai import AsyncOpenAI
 
-from app.core.config import get_settings
-from app.core.db import add_spend_cents, get_spend_day
-
 
 _TRANSIENT_HTTP = {408, 409, 425, 429, 500, 502, 503, 504, 529}
-
-
-class BudgetExceeded(RuntimeError):
-    """Raised when the per-day spend cap would be crossed."""
 
 
 async def anthropic_call_with_retry(
@@ -69,7 +64,7 @@ async def anthropic_call_with_retry(
                 return await client.messages.create(
                     model=model_id,
                     max_tokens=max_tokens,
-                    messages=messages,
+                    messages=messages,  # type: ignore[arg-type]
                     **extra,
                 )
             except AnthropicAPIStatusError as e:
@@ -93,7 +88,7 @@ async def openai_chat_with_retry(
     *,
     model: str,
     messages: list[dict[str, Any]],
-    response_format: dict[str, str] | None = None,
+    response_format: dict[str, Any] | None = None,
     temperature: float = 0.4,
     attempts: int = 4,
     base_delay: float = 1.0,
@@ -129,8 +124,10 @@ async def openai_chat_with_retry(
     raise last_err
 
 
-_PRICE_PER_M_TOKEN = {
-    # rough public list-price snapshots at planning time (cents per 1M tokens)
+# Rough public list-price snapshots at planning time (cents per 1M tokens).
+# Used only for the run-manifest cost estimate; exact billing comes from
+# the provider invoice.
+_PRICE_PER_M_TOKEN: dict[str, tuple[int, int]] = {
     "opus": (1500, 7500),
     "sonnet": (300, 1500),
     "haiku": (80, 400),
@@ -178,59 +175,6 @@ class AgentResult:
     extras: dict[str, Any] = field(default_factory=dict)
 
 
-class SpendTracker:
-    """Records cents into the SQLite spend table per UTC day.
-
-    Use as ``await tracker.record("director", cents)``. Before kicking off an
-    expensive agent, call ``await tracker.assert_budget(extra=cents)`` to fail
-    fast when we'd cross today's cap.
-    """
-
-    def __init__(self, *, day: str | None = None, cap_cents: int | None = None):
-        s = get_settings()
-        self._day = day or datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        self._cap = cap_cents if cap_cents is not None else s.max_spend_cents_per_day
-        self._in_memory_total: int = 0
-        self._by_role: dict[str, int] = {}
-
-    @property
-    def day(self) -> str:
-        return self._day
-
-    @property
-    def total_cents(self) -> int:
-        return self._in_memory_total
-
-    @property
-    def cap_cents(self) -> int:
-        return self._cap
-
-    @property
-    def by_role(self) -> dict[str, int]:
-        return dict(self._by_role)
-
-    async def assert_budget(self, *, extra: int = 0) -> None:
-        used = await get_spend_day(self._day)
-        if used + extra > self._cap:
-            raise BudgetExceeded(
-                f"daily spend cap reached: used={used}c extra={extra}c cap={self._cap}c"
-            )
-
-    async def record(self, role: str, cents: int) -> None:
-        if cents <= 0:
-            return
-        self._in_memory_total += cents
-        self._by_role[role] = self._by_role.get(role, 0) + cents
-        await add_spend_cents(self._day, cents)
-
-
-async def gather_agents(
-    coros: Iterable[Awaitable[AgentResult]],
-) -> list[AgentResult]:
-    """asyncio.gather over agent coros, preserving order."""
-    return list(await asyncio.gather(*coros))
-
-
 def text_from_anthropic(msg: Any) -> str:
     return "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
 
@@ -254,12 +198,3 @@ def make_result(
         spend_cents=spend_cents,
         extras=extras or {},
     )
-
-
-# Re-export the legacy callable name some modules still import.
-async def with_anthropic_retry(*args, **kwargs):  # pragma: no cover - shim
-    return await anthropic_call_with_retry(*args, **kwargs)
-
-
-# Stable list of callables for callers that want to enumerate agents.
-AgentCoro = Callable[..., Awaitable[AgentResult]]

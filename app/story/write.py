@@ -5,10 +5,17 @@ Each event folder contains EXACTLY four files (plus the hero PNG):
 - ``README.md``         — human-readable wire summary, cross-outlet read,
                           panel transcript, Polymarket angle, Higgsfield prompt.
 - ``hero.png``          — reference still (passed to Higgsfield as ref image).
-- ``higgsfield.json``   — {prompt, camera_move, aspect_ratio, duration_s,
-                          ref_image_path}: drop straight into Higgsfield API.
+- ``higgsfield.json``   — wire-droppable Higgsfield API body. Field names
+                          match `POST /{model_id}` verbatim:
+                          ``{prompt, image_url, duration, aspect_ratio}``.
+                          ``image_url`` is a relative path to ``hero.png`` (or
+                          left empty); the caller substitutes a real URL /
+                          data-URL at submit time.
 - ``conversation.json`` — persona panel transcript (the AI debate).
 - ``sources.json``      — raw cluster article URLs + outlet metadata.
+- ``meta.json``         — sidecar with non-API fields the brief produced but
+                          the Higgsfield API doesn't consume: camera_move,
+                          ref_image_path, polymarket angle, JJJ notes.
 
 Plus a top-level ``output/README.md`` index of every event.
 """
@@ -19,6 +26,20 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+
+def _compose_higgsfield_prompt(prompt: str, camera_move: str) -> str:
+    """Bake the camera move into the natural-language motion prompt.
+
+    Matches ``app/render/higgsfield.py::_compose_prompt`` so the on-disk
+    artifact and the wire submit produce identical motion prompts.
+    """
+    body = (prompt or "").strip()
+    cam = (camera_move or "").strip()
+    if not cam:
+        return body
+    cam_human = cam.replace("_", " ")
+    return f"Camera: {cam_human}. {body}"
 
 
 def _lean_chip(lean: str) -> str:
@@ -199,15 +220,34 @@ def write_event(
     """Emit the four output files for one event (plus ``video.mp4`` when Higgsfield ran)."""
     folder.mkdir(parents=True, exist_ok=True)
 
-    higgs = dict(brief.get("higgsfield") or {})
-    if hero_path and hero_path.exists():
-        higgs["ref_image_path"] = f"./{hero_path.name}"
-    if video_path and video_path.exists():
-        higgs["video_path"] = f"./{video_path.name}"
-    if market:
-        higgs["polymarket"] = market
+    higgs_brief = dict(brief.get("higgsfield") or {})
+    # Compose the EXACT JSON body the Higgsfield queue API expects, so the
+    # on-disk artifact is wire-droppable without any field renaming. See
+    # ``app/render/higgsfield.py`` for the corresponding wire path.
+    higgsfield_body: dict[str, Any] = {
+        "prompt": _compose_higgsfield_prompt(
+            str(higgs_brief.get("prompt") or ""),
+            str(higgs_brief.get("camera_move") or "static"),
+        ),
+        "image_url": f"./{hero_path.name}" if hero_path and hero_path.exists() else "",
+        "duration": int(higgs_brief.get("duration_s") or higgs_brief.get("duration") or 8),
+        "aspect_ratio": str(higgs_brief.get("aspect_ratio") or "16:9"),
+    }
     (folder / "higgsfield.json").write_text(
-        json.dumps(higgs, indent=2, ensure_ascii=False) + "\n",
+        json.dumps(higgsfield_body, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+    meta: dict[str, Any] = {
+        "camera_move": str(higgs_brief.get("camera_move") or "static"),
+        "raw_prompt": str(higgs_brief.get("prompt") or ""),
+        "ref_image_path": f"./{hero_path.name}" if hero_path and hero_path.exists() else None,
+        "video_path": f"./{video_path.name}" if video_path and video_path.exists() else None,
+        "polymarket": market or None,
+        "jjj": brief.get("_jjj") or None,
+    }
+    (folder / "meta.json").write_text(
+        json.dumps(meta, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
 
@@ -239,7 +279,7 @@ def write_event(
     higgs_summary = brief.get("higgsfield") or {}
     higgs_prompt = higgs_summary.get("prompt") or ""
     higgs_camera = higgs_summary.get("camera_move") or "static"
-    higgs_ratio = higgs_summary.get("aspect_ratio") or "9:16"
+    higgs_ratio = higgs_summary.get("aspect_ratio") or "16:9"
     higgs_dur = higgs_summary.get("duration_s") or 5
 
     if hero_path and hero_path.exists():
@@ -315,6 +355,7 @@ def write_index(output_dir: Path) -> Path:
     ):
         readme = f / "README.md"
         higgs = f / "higgsfield.json"
+        meta_p = f / "meta.json"
         if not readme.exists():
             continue
         hook = readme.read_text(encoding="utf-8").splitlines()[0].lstrip("# ").strip()
@@ -324,10 +365,18 @@ def write_index(output_dir: Path) -> Path:
                 higgs_data = json.loads(higgs.read_text(encoding="utf-8"))
             except Exception:
                 pass
+        meta_data: dict[str, Any] = {}
+        if meta_p.exists():
+            try:
+                meta_data = json.loads(meta_p.read_text(encoding="utf-8"))
+            except Exception:
+                pass
         rows.append({
             "folder": f.name,
             "hook": hook,
-            "camera": higgs_data.get("camera_move", "?"),
+            # `camera_move` lives in meta.json now (the API body doesn't
+            # accept it), aspect_ratio still lives in higgsfield.json.
+            "camera": meta_data.get("camera_move", higgs_data.get("camera_move", "?")),
             "ratio": higgs_data.get("aspect_ratio", "?"),
         })
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")

@@ -1,0 +1,121 @@
+{
+  "schema_version": "1.0",
+  "run_id": "20260516T195112Z--85c22dee9221",
+  "cluster_hash": "85c22dee9221893e",
+  "event_id": "2026-05-16-supreme-court-halts-virginia-democrats-redistricting-bid-citing-constitutional-b",
+  "started_at_iso": "2026-05-16T19:51:12.265764+00:00",
+  "ended_at_iso": "2026-05-16T19:57:49.537647+00:00",
+  "wall_seconds": 397.271,
+  "totals": {
+    "spend_cents": 62,
+    "tokens_in": 2618,
+    "tokens_out": 685,
+    "events": 7
+  },
+  "events": [
+    {
+      "ts_iso": "2026-05-16T19:51:20.656570+00:00",
+      "elapsed_s_from_start": 8.39,
+      "step": "polymarket",
+      "model": "",
+      "provider": "",
+      "latency_ms": 8386,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "spend_cents": 0,
+      "status": "proposed",
+      "extras": {
+        "matched_slug": "virginia-special-redistricting-2026-midterms"
+      }
+    },
+    {
+      "ts_iso": "2026-05-16T19:51:26.193514+00:00",
+      "elapsed_s_from_start": 13.927,
+      "step": "brief",
+      "model": "gpt-4o",
+      "provider": "openai",
+      "latency_ms": 5536,
+      "tokens_in": 1773,
+      "tokens_out": 564,
+      "spend_cents": 1,
+      "status": "ok",
+      "extras": {}
+    },
+    {
+      "ts_iso": "2026-05-16T19:57:00.169531+00:00",
+      "elapsed_s_from_start": 347.903,
+      "step": "panel",
+      "model": "claude-sonnet-4-20250514",
+      "provider": "anthropic",
+      "latency_ms": 333974,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "spend_cents": 60,
+      "status": "stalemate",
+      "extras": {
+        "turn_count": 60,
+        "debate_turns": 60,
+        "agreement_turns": 0,
+        "devil_advocate_id": "james",
+        "consensus_probability_pct": 8,
+        "re_entry_used": false
+      }
+    },
+    {
+      "ts_iso": "2026-05-16T19:57:01.847754+00:00",
+      "elapsed_s_from_start": 349.581,
+      "step": "jjj",
+      "model": "gpt-4o",
+      "provider": "openai",
+      "latency_ms": 1677,
+      "tokens_in": 845,
+      "tokens_out": 121,
+      "spend_cents": 1,
+      "status": "ok",
+      "extras": {}
+    },
+    {
+      "ts_iso": "2026-05-16T19:57:49.536069+00:00",
+      "elapsed_s_from_start": 397.269,
+      "step": "hero",
+      "model": "gpt-image-1",
+      "provider": "openai",
+      "latency_ms": 47687,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "spend_cents": 0,
+      "status": "ok",
+      "extras": {
+        "path": "output/2026-05-16-supreme-court-halts-virginia-democrats-redistricting-bid-citing-constitutional-b/hero.png"
+      }
+    },
+    {
+      "ts_iso": "2026-05-16T19:57:49.536103+00:00",
+      "elapsed_s_from_start": 397.269,
+      "step": "higgsfield",
+      "model": "",
+      "provider": "",
+      "latency_ms": 0,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "spend_cents": 0,
+      "status": "skipped: gate_off",
+      "extras": {}
+    },
+    {
+      "ts_iso": "2026-05-16T19:57:49.537637+00:00",
+      "elapsed_s_from_start": 397.271,
+      "step": "write",
+      "model": "",
+      "provider": "",
+      "latency_ms": 1,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "spend_cents": 0,
+      "status": "ok",
+      "extras": {
+        "folder": "output/2026-05-16-supreme-court-halts-virginia-democrats-redistricting-bid-citing-constitutional-b"
+      }
+    }
+  ]
+}

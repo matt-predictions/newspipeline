@@ -27,6 +27,7 @@ dev = [
   "pytest>=8.0",
   "pytest-asyncio>=0.24",
   "respx>=0.21",
+  "mypy>=1.10",
 ]
 
 [build-system]
@@ -39,3 +40,23 @@ packages = ["app"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+follow_imports = "silent"
+strict_optional = true
+warn_unused_ignores = false
+warn_redundant_casts = true
+warn_return_any = false
+check_untyped_defs = true
+disallow_untyped_calls = false
+disallow_incomplete_defs = false
+no_implicit_optional = true
+# Modules we want clean. Adding files to this list as we ratchet up.
+files = ["app"]
+
+[[tool.mypy.overrides]]
+module = ["feedparser", "yaml", "anthropic.*", "openai.*", "httpx.*",
+          "slugify", "respx", "apscheduler.*", "aiosqlite"]
+ignore_missing_imports = true

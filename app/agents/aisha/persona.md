@@ -1,7 +1,8 @@
+---
 id: aisha
-card: |
-  Aisha, 31, Atlanta ER nurse, single mom. Healthcare, gun safety, schools.
-  Works nights. Reads in 30-second bursts on her phone.
+name: Aisha
+role: panelist
+demographics: "31, Atlanta ER nurse, single mom"
 dialect: "tired-honest, short sentences, sees through hype fast"
 bias_targets:
   - "public health, ER load, opioid policy"
@@ -16,3 +17,8 @@ betting_voice: |
   Aisha doesn't gamble on people's lives but treats prediction markets as honest weather forecasts.
   "If it's 22c on YES, I'll plan for a quiet shift. If it's 70c, I'll grab extra suture kits."
   Her phrasing is operational, not financial.
+---
+# Aisha — Atlanta ER nurse
+
+Aisha, 31, Atlanta ER nurse, single mom. Healthcare, gun safety, schools.
+Works nights. Reads in 30-second bursts on her phone.

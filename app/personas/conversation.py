@@ -46,7 +46,7 @@ import json
 import random
 import re
 from dataclasses import asdict, dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 from anthropic import AsyncAnthropic
 from openai import AsyncOpenAI
@@ -60,12 +60,16 @@ from app.agents.base import (
     rough_cost_cents,
     text_from_anthropic,
 )
+from app.agents.schemas import PanelTurnOut, StructuredOutputError, parse_structured
 from app.core.config import get_settings
-from app.core.jsonx import extract_json_object
 from app.prompts import load_prompt
 
 
-DEFAULT_MAX_TURNS: int = 50
+# Bumped from 50 → 60 so the agreement round + an optional re-entry cycle
+# always fit even when the debate ran long. `_ready_for_agreement` also
+# refuses to enter the agreement phase if there's no budget left for a
+# full panel-sized agreement round (see below).
+DEFAULT_MAX_TURNS: int = 60
 
 MIN_TURNS_PER_PERSONA: int = 3      # each persona must speak this many debate turns
 CONSENSUS_SPREAD_CENTS: int = 10    # last-round pct max - min must be ≤ this to enter agreement
@@ -262,6 +266,7 @@ def _ready_for_agreement(
     panel_ids: set[str],
     min_debate_total: int,
     re_entry_debate_threshold: int | None,
+    max_turns: int,
 ) -> bool:
     """True iff debate-phase conditions for advancing to agreement are met.
 
@@ -269,11 +274,17 @@ def _ready_for_agreement(
     the debate phase AND the most-recent-priced pct across all personas to
     have spread ≤ ``CONSENSUS_SPREAD_CENTS``. After re-entry, also requires
     at least ``RE_ENTRY_DEBATE_TURNS`` new debate turns since re-entry.
+
+    Also refuses to advance when there isn't enough total-turn budget left
+    to complete the full agreement round (so consensus can't fire at turn
+    49 of 50 with a 5-person panel, only to be coerced to ``stalemate``).
     """
     debate = _debate_turns(turns)
     if len(debate) < min_debate_total:
         return False
     if re_entry_debate_threshold is not None and len(debate) < re_entry_debate_threshold:
+        return False
+    if max_turns - len(turns) < len(panel_ids):
         return False
 
     counts: dict[str, int] = {}
@@ -512,12 +523,19 @@ async def _one_turn(
         tout = getattr(usage, "completion_tokens", 0) if usage else 0
         model_for_cost = s.openai_model_top
 
-    data = extract_json_object(text) or {}
-    body = str(data.get("text") or "").strip()
-    prob = data.get("probability_pct")
-    if not isinstance(prob, int):
+    try:
+        parsed = parse_structured(text, PanelTurnOut)
+        body = parsed.text.strip()
+        prob = parsed.probability_pct
+        asks = parsed.asks_persona
+    except StructuredOutputError:
+        # If the LLM drifted off-schema, salvage the text and re-parse a
+        # probability from it. We never want one bad turn to blow up the panel.
+        body = (text or "").strip()
+        prob = None
+        asks = None
+    if prob is None:
         prob = parse_probability(body)
-    asks = data.get("asks_persona") or None
     cents = rough_cost_cents(tin, tout, classify_model(model_for_cost))
     return (
         ConversationTurn(
@@ -533,6 +551,16 @@ async def _one_turn(
     )
 
 
+TurnCallback = Callable[[ConversationTurn, str, int, int], None]
+"""Per-turn progress callback: ``(turn, phase, idx, total_so_far)``.
+
+``phase`` is "debate" or "agreement". ``idx`` is the 1-indexed position
+within that phase. ``total_so_far`` is ``len(transcript.turns)`` after the
+turn is appended. Callbacks must be lightweight and non-blocking (the
+pipeline uses them for stdout progress logs).
+"""
+
+
 async def run_conversation(
     panel_personas: list[dict[str, Any]],
     *,
@@ -540,6 +568,7 @@ async def run_conversation(
     market_context: str = "",
     max_turns: int = DEFAULT_MAX_TURNS,
     event_id: str | None = None,
+    on_turn: TurnCallback | None = None,
 ) -> tuple[ConversationTranscript, AgentResult]:
     """Two-phase conversation: debate → agreement → consensus | stalemate.
 
@@ -630,6 +659,12 @@ async def run_conversation(
             debate_turn_count += 1
             total_cents += cents
             order += 1
+            if on_turn is not None:
+                try:
+                    on_turn(turn, "debate", debate_turn_count, len(transcript.turns))
+                except Exception:
+                    # progress callbacks must never break the conversation
+                    pass
 
             if _detect_repetition(transcript.turns):
                 # 3 consecutive near-identical turns is genuine groupthink;
@@ -640,6 +675,7 @@ async def run_conversation(
                     panel_ids=panel_ids,
                     min_debate_total=min_debate_total,
                     re_entry_debate_threshold=re_entry_debate_threshold,
+                    max_turns=max_turns,
                 ):
                     converged_median = _converged_median(transcript.turns, panel_ids)
                     phase = "agreement"
@@ -654,6 +690,7 @@ async def run_conversation(
                 panel_ids=panel_ids,
                 min_debate_total=min_debate_total,
                 re_entry_debate_threshold=re_entry_debate_threshold,
+                max_turns=max_turns,
             ):
                 converged_median = _converged_median(transcript.turns, panel_ids)
                 phase = "agreement"
@@ -680,6 +717,12 @@ async def run_conversation(
                 transcript.turns.append(turn)
                 total_cents += cents
                 order += 1
+                if on_turn is not None:
+                    try:
+                        ag_idx = len(_agreement_turns(transcript.turns))
+                        on_turn(turn, "agreement", ag_idx, len(transcript.turns))
+                    except Exception:
+                        pass
             else:
                 ag = _agreement_turns(transcript.turns)
                 # Only count the MOST RECENT agreement attempt (post any re-entry).

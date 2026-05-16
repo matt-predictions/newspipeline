@@ -17,7 +17,6 @@ POC-grade: one call, one JSON output, no debate loops.
 
 from __future__ import annotations
 
-import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -31,8 +30,8 @@ from app.agents.base import (
     rough_cost_cents,
     text_from_anthropic,
 )
+from app.agents.schemas import BriefOut, StructuredOutputError, parse_structured
 from app.core.config import get_settings
-from app.core.jsonx import extract_json_object
 from app.prompts import load_prompt
 
 
@@ -96,32 +95,11 @@ def _default_brief(reason: str) -> dict[str, Any]:
         "higgsfield": {
             "prompt": reason,
             "camera_move": "static",
-            "aspect_ratio": "9:16",
+            "aspect_ratio": "16:9",
             "duration_s": 5,
         },
         "hero_image_prompt": reason,
     }
-
-
-_YEAR_RE = re.compile(r"(?<!\d)(19\d{2}|20\d{2})(?!\d)")
-
-
-def _scrub_stale_years(obj: Any, *, current_year: int, target_year: int) -> Any:
-    """Recursively bump any year < current_year to target_year.
-
-    The LLM is told to use today's date, but its training prior occasionally
-    leaks through. One regex sweep keeps the output self-consistent.
-    """
-    if isinstance(obj, str):
-        return _YEAR_RE.sub(
-            lambda m: str(target_year) if int(m.group(0)) < current_year else m.group(0),
-            obj,
-        )
-    if isinstance(obj, list):
-        return [_scrub_stale_years(x, current_year=current_year, target_year=target_year) for x in obj]
-    if isinstance(obj, dict):
-        return {k: _scrub_stale_years(v, current_year=current_year, target_year=target_year) for k, v in obj.items()}
-    return obj
 
 
 async def _write_brief_openai(
@@ -194,6 +172,7 @@ async def write_brief(
     if not sources:
         return _default_brief("no sources in cluster")
     prompt = _user_prompt(sources, market_context=market_context, today=today)
+    _ = today  # variable kept for future telemetry, no longer used in body
 
     if s.has_openai:
         oc = client if isinstance(client, AsyncOpenAI) else AsyncOpenAI(api_key=s.openai_api_key)
@@ -204,12 +183,19 @@ async def write_brief(
     else:
         return _default_brief("no API keys configured")
 
-    data = extract_json_object(text) or _default_brief("empty LLM output")
-    for key, default in _default_brief("missing").items():
-        data.setdefault(key, default)
-    data = _scrub_stale_years(
-        data, current_year=today.year, target_year=today.year + 1
-    )
+    try:
+        parsed = parse_structured(text, BriefOut)
+        data = parsed.model_dump()
+    except StructuredOutputError:
+        # Fall back to the safe default rather than crash the run — the
+        # warn() in pipeline.py will surface the failure to the operator.
+        data = _default_brief("brief schema validation failed")
+    # NOTE: we used to run a recursive year-bump scrubber here that rewrote
+    # every year token < current_year. It corrupted legitimate historical
+    # references (e.g. "deemed a global terrorist in 2023" → "in 2027").
+    # The brief.user.md prompt already pins TODAY and instructs the model
+    # to use only forward-looking horizons; that's the contract. The
+    # proposer keeps its own field-targeted scrubber for title/slug/horizon.
     data["_meta"] = {
         "model": model,
         "tokens_in": tin,

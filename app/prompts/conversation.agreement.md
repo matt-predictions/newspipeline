@@ -1,3 +1,12 @@
+---
+purpose: Agreement-round brief — final lock-in or explicit break
+owner: newspipeline-core
+version: 1.1.0
+inputs:
+  median: Converged room median (cents) the panelist should lock against
+  turn_count: How many debate turns preceded this agreement round
+output_format: text
+---
 AGREEMENT ROUND (read FIRST, before persona card):
 The panel has converged near {median}c after {turn_count} turns of real debate. This is your FINAL turn — state a final probability AND a one-sentence agreement statement.
 

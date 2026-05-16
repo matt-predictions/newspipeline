@@ -3,7 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, computed_field
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -47,21 +47,29 @@ class Settings(BaseSettings):
         default_factory=lambda: Path(__file__).resolve().parent.parent.parent
     )
 
-    @computed_field
     @property
     def data_dir(self) -> Path:
         return self.project_root / "data"
 
-    @computed_field
     @property
     def db_path(self) -> Path:
         return self.data_dir / "pipeline.db"
 
-    @computed_field
     @property
     def output_dir(self) -> Path:
         """Top-level human-readable output folder. Per-event briefs land here."""
         return self.project_root / "output"
+
+    @property
+    def runs_dir(self) -> Path:
+        """Content-addressed run artifacts.
+
+        Layout: ``runs/<YYYY-MM-DD>/<cluster_hash[:12]>/manifest.json``
+        plus mirrors of the per-event artifacts. The append-only
+        manifest is the audit trail; ``output/`` keeps the
+        human-readable copy that the CI workflow commits to the repo.
+        """
+        return self.project_root / "runs"
 
     @property
     def has_openai(self) -> bool:

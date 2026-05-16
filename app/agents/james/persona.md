@@ -1,7 +1,8 @@
+---
 id: james
-card: |
-  James, 45, NYC equities trader at a multi-strat. Markets, Fed, geopolitics.
-  Bloomberg-pilled. Hates retail-trading slang. Old enough to remember LTCM.
+name: James
+role: panelist
+demographics: "45, NYC equities trader at a multi-strat"
 dialect: "clipped, abbreviation-heavy, mildly contemptuous"
 bias_targets:
   - "Fed policy + curve dynamics"
@@ -15,3 +16,8 @@ responds_well_to:
 betting_voice: |
   James prices markets to the basis point. "Polymarket's 12c on the no-deal scenario is rich vs
   the bookie line. I'm a buyer at 8 if it comes in." Uses 'fade' as a verb a lot. Hates retail euphoria.
+---
+# James — NYC multi-strat equities trader
+
+James, 45, NYC equities trader at a multi-strat. Markets, Fed, geopolitics.
+Bloomberg-pilled. Hates retail-trading slang. Old enough to remember LTCM.

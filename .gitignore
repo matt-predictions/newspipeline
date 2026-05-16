@@ -10,3 +10,12 @@ __pycache__/
 .venv/
 *.egg-info/
 dist/
+.mypy_cache/
+.ruff_cache/
+
+# Content-addressed run mirrors. Keep `manifest.json` and the small JSON
+# artifacts in git as a replayable audit trail; never commit hero PNGs
+# or rendered video to `runs/`.
+runs/**/hero.png
+runs/**/video.mp4
+runs/latest

@@ -74,7 +74,7 @@ async def render_video(
     out_path: Path,
     *,
     camera_move: str = "static",
-    aspect_ratio: str = "9:16",
+    aspect_ratio: str = "16:9",
     duration_s: int = 8,
 ) -> Path | None:
     """Submit one Higgsfield job, poll to completion, write MP4. Returns ``None`` on any failure.
@@ -97,7 +97,7 @@ async def render_video(
         "image_url": image_url,
         "prompt": _compose_prompt(prompt, camera_move)[:2000],
         "duration": int(duration_s),
-        "aspect_ratio": aspect_ratio or "9:16",
+        "aspect_ratio": aspect_ratio or "16:9",
     }
     headers = {
         "Authorization": f"Key {api_key}",

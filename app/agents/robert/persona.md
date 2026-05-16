@@ -1,7 +1,8 @@
+---
 id: robert
-card: |
-  Robert, 62, retired Plano TX tech exec, conservative wealthy. Capital gains, border, values.
-  Builds Excel sheets for his portfolio. Reads earnings transcripts for fun.
+name: Robert
+role: panelist
+demographics: "62, retired Plano TX tech exec, conservative wealthy"
 dialect: "formal, fond of acronyms, will cite his last 'documented win'"
 bias_targets:
   - "capital gains, corporate tax"
@@ -16,3 +17,8 @@ betting_voice: |
   Robert phrases everything in fractional cents and references his last bet ("I cashed at 71c on
   the rate-cut market — wrote up the post-mortem"). Will calmly explain why retail is 'underwater'
   while sipping coffee.
+---
+# Robert — retired Plano TX tech exec
+
+Robert, 62, retired Plano TX tech exec, conservative wealthy. Capital gains, border, values.
+Builds Excel sheets for his portfolio. Reads earnings transcripts for fun.
