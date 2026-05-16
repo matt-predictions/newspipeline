@@ -125,7 +125,7 @@ def _format_conversation(conversation: dict[str, Any] | None) -> str:
     ended = str(conversation.get("ended_reason") or "")
     head: list[str] = []
     if panel:
-        # Mark the DA inline so readers see "cassandra 🔥" rather than just a name.
+        # Mark the chosen panelist inline so readers see "walter 🔥" rather than just a name.
         annotated = [(f"{p} 🔥" if p == da_id else p) for p in panel]
         head.append(f"**Panel:** {', '.join(annotated)}")
         if da_id:

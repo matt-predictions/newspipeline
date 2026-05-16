@@ -197,14 +197,13 @@ async def _run_one(
     conversation_dict: dict[str, Any] | None
     try:
         personas = load_personas()
-        regulars = [p for p in personas if p.get("role") != "devil_advocate"][:4]
-        da = next((p for p in personas if p.get("role") == "devil_advocate"), None)
-        panel = regulars + ([da] if da else [])
+        panel = personas[:5]
         if panel:
             transcript, _ = await run_conversation(
                 panel,
                 summary=f"{brief.get('hook', '')}\n\n{cluster_summary}",
                 market_context=market_context or "",
+                event_id=chosen.dedup_hash,
             )
             consensus = transcript.consensus_probability_pct
             tag_da = " (incl. devil's advocate)" if transcript.devil_advocate_id else ""

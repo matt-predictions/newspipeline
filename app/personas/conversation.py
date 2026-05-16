@@ -1,9 +1,11 @@
 """Round-robin persona conversation with a devil's advocate.
 
-Each regular persona speaks first; their first-round probabilities give us a
-"room median". Then the devil's advocate (any persona with ``role:
-devil_advocate`` in its YAML card) joins, anchored to argue the OPPOSITE
-direction by at least 35pp, citing concrete historical precedent.
+The devil's advocate is NOT a dedicated persona — it's a role assigned at
+runtime to one of the existing panelists, chosen deterministically by
+hashing the event id so re-runs of the same cluster reproduce the same DA.
+The chosen panelist keeps their normal voice (Walter still sounds like
+Walter); we only bolt on a "for THIS debate, argue the opposite direction"
+brief in the prompt.
 
 End conditions (in order):
 - ``da_swayed``   — devil's advocate moved ≥ 20pp toward the room median.
@@ -19,7 +21,9 @@ final script.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import random
 import re
 from dataclasses import asdict, dataclass, field
 from typing import Any
@@ -44,7 +48,6 @@ CONSENSUS_RANGE_CENTS: int = 5
 DEFAULT_MAX_TURNS: int = 14
 REPETITION_JACCARD: float = 0.78
 
-DA_ROLE: str = "devil_advocate"
 DA_SWAY_THRESHOLD_PP: int = 20
 ROOM_SWAY_THRESHOLD_PP: int = 15
 DA_OPENING_DELTA_PP: int = 35
@@ -142,16 +145,36 @@ def _detect_consensus(turns: list[ConversationTurn]) -> int | None:
     return None
 
 
-def _is_da(persona: dict[str, Any]) -> bool:
-    return str(persona.get("role", "")).lower() == DA_ROLE
+def _pick_devil_advocate(
+    panel: list[dict[str, Any]], *, event_id: str | None
+) -> dict[str, Any] | None:
+    """Pick exactly one panelist to play devil's advocate for THIS debate.
+
+    Selection is deterministic when ``event_id`` is provided (so re-running
+    the same cluster produces the same DA), and uniformly random otherwise.
+    Returns ``None`` for panels of size < 2 — you need at least one regular
+    and one DA for the sway logic to make sense.
+    """
+    if len(panel) < 2:
+        return None
+    if event_id:
+        seed = int(hashlib.sha256(event_id.encode("utf-8")).hexdigest()[:16], 16)
+        rng = random.Random(seed)
+    else:
+        rng = random.Random()
+    return rng.choice(panel)
 
 
-def _split_panel(
-    panel: list[dict[str, Any]],
-) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
-    regulars = [p for p in panel if not _is_da(p)]
-    da = next((p for p in panel if _is_da(p)), None)
-    return regulars, da
+def _persona_summary(persona: dict[str, Any]) -> str:
+    """One-line distillation of the persona for the DA brief.
+
+    Personas don't carry an explicit ``summary`` field; we lift the first
+    sentence of ``card`` and squash whitespace so it slots cleanly into a
+    prompt sentence.
+    """
+    card = str(persona.get("card") or "").strip()
+    first = re.split(r"(?<=[.!?])\s", card, maxsplit=1)[0]
+    return " ".join(first.split())[:240] or persona.get("id", "panelist")
 
 
 def _median_int(xs: list[int]) -> int | None:
@@ -246,14 +269,27 @@ def _check_sway(
 
 
 def _devil_advocate_prefix(
-    *, room_median: int | None, is_opening: bool
+    *,
+    persona: dict[str, Any],
+    room_median: int | None,
+    is_opening: bool,
 ) -> str:
+    """Render the DA framing block for a panelist drawn from the regular pool.
+
+    The chosen panelist KEEPS their normal voice (dialect + betting_voice) —
+    we only tell them, for THIS debate, to argue the opposite direction with
+    a specific precedent or mechanism.
+    """
+    persona_summary = _persona_summary(persona)
+    persona_id = persona.get("id", "panelist")
     if room_median is None:
         return (
-            "DEVIL'S ADVOCATE BRIEF:\n"
-            "You are this story's devil's advocate. The panel hasn't priced yet — "
-            "open with a sharp, evidence-backed contrarian read so the others have "
-            "something concrete to argue against.\n\n"
+            "DEVIL'S ADVOCATE BRIEF — FOR THIS DEBATE ONLY:\n"
+            f"You are this story's devil's advocate FOR THIS DEBATE ONLY. "
+            f"Your normal persona is {persona_summary} — keep that voice, "
+            "dialect, and betting cadence. The panel hasn't priced yet, so "
+            "open with a sharp, evidence-backed contrarian read in your own "
+            "voice so the others have something concrete to push against.\n\n"
         )
     if is_opening:
         if room_median >= 50:
@@ -267,20 +303,24 @@ def _devil_advocate_prefix(
                 f"opening probability MUST be ≥ {target}c (i.e. well above the room)."
             )
         return (
-            "DEVIL'S ADVOCATE BRIEF (read FIRST, before persona card):\n"
-            f"The panel has converged near {room_median}c. Argue the OPPOSITE "
-            "direction with a SPECIFIC historical precedent or structural "
-            "mechanism — not contrarianism for its own sake. Hold the position "
-            "until the panel either sways you with new evidence, or you sway "
-            "them.\n"
+            "DEVIL'S ADVOCATE BRIEF — FOR THIS DEBATE ONLY (read FIRST, before persona card):\n"
+            f"You ({persona_id}) are this story's devil's advocate FOR THIS "
+            f"DEBATE ONLY. Your normal persona is {persona_summary}, but for "
+            f"this story the panel has converged near {room_median}c — your "
+            "job is to argue the OPPOSITE direction with a SPECIFIC historical "
+            "precedent or structural mechanism, in YOUR normal voice. Hold the "
+            "position until the panel either sways you with new evidence, or "
+            "you sway them.\n"
             f"On THIS opening turn: {hint}\n\n"
         )
     return (
-        "DEVIL'S ADVOCATE BRIEF (read FIRST, before persona card):\n"
-        f"The panel is currently around {room_median}c. Continue arguing the "
-        "opposite direction with concrete precedent. Move ONLY if a panelist "
-        "gives you a new mechanism — not because they repeated themselves "
-        "louder.\n\n"
+        "DEVIL'S ADVOCATE BRIEF — FOR THIS DEBATE ONLY (read FIRST, before persona card):\n"
+        f"You ({persona_id}) are this story's devil's advocate FOR THIS "
+        f"DEBATE ONLY. Your normal persona is {persona_summary}. The room is "
+        f"currently around {room_median}c — keep arguing the opposite "
+        "direction in your own voice, citing concrete precedent or mechanism. "
+        "Move ONLY if a panelist gives you a genuinely new mechanism, not "
+        "because they repeated themselves louder.\n\n"
     )
 
 
@@ -301,6 +341,7 @@ def _turn_user_prompt(
     prefix = ""
     if devil_advocate_meta is not None:
         prefix = _devil_advocate_prefix(
+            persona=persona,
             room_median=devil_advocate_meta.get("room_median"),
             is_opening=bool(devil_advocate_meta.get("is_opening", False)),
         )
@@ -419,23 +460,26 @@ async def run_conversation(
     summary: str,
     market_context: str = "",
     max_turns: int = DEFAULT_MAX_TURNS,
+    event_id: str | None = None,
 ) -> tuple[ConversationTranscript, AgentResult]:
-    """Round-robin conversation with optional devil's advocate.
+    """Round-robin conversation with a random devil's advocate.
 
     Provider routing: Anthropic Sonnet when ``ANTHROPIC_API_KEY`` is present
     (preferred — better at sustained-voice persona writing), otherwise OpenAI
     ``gpt-4o`` with JSON-mode. Same prompt either way.
 
-    A panelist with ``role: devil_advocate`` in its YAML card is treated
-    specially: it gets an opening anchor 35pp away from the room median and a
-    persona-aware prompt prefix on every turn. Termination flips from
+    One panelist is drawn from ``panel_personas`` at runtime to play devil's
+    advocate. With ``event_id`` set (recommended — pass the cluster
+    ``dedup_hash`` or the event slug), the pick is deterministic, so reruns
+    of the same cluster produce the same DA. The DA keeps their normal voice;
+    only the framing prompt tilts them contrarian. Termination flips from
     fast-consensus to a sway/stalemate check (see module docstring).
     """
     s = get_settings()
     ids = [p["id"] for p in panel_personas]
-    regulars, da_persona = _split_panel(panel_personas)
-    regular_ids = {p["id"] for p in regulars}
+    da_persona = _pick_devil_advocate(panel_personas, event_id=event_id)
     da_id = da_persona["id"] if da_persona else None
+    regular_ids = {p["id"] for p in panel_personas if p["id"] != da_id}
 
     transcript = ConversationTranscript(
         panel=list(ids),
