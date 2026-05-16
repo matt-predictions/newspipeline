@@ -7,11 +7,11 @@ News wire in, Higgsfield-ready video brief out. Five briefs per run.
 - Python 3.11+
 - At least one of `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`. Both is best.
 
-| Keys set                | Brief    | Panel     | Proposer  | Hero image | Sora |
-|-------------------------|----------|-----------|-----------|------------|------|
-| both                    | OpenAI   | Anthropic | Anthropic | yes        | opt  |
-| only `OPENAI_API_KEY`   | OpenAI   | OpenAI    | OpenAI    | yes        | opt  |
-| only `ANTHROPIC_API_KEY`| Anthropic| Anthropic | Anthropic | **skipped**| skip |
+| Keys set                | Brief    | Panel     | Proposer  | Hero image |
+|-------------------------|----------|-----------|-----------|------------|
+| both                    | OpenAI   | Anthropic | Anthropic | yes        |
+| only `OPENAI_API_KEY`   | OpenAI   | OpenAI    | OpenAI    | yes        |
+| only `ANTHROPIC_API_KEY`| Anthropic| Anthropic | Anthropic | **skipped**|
 
 Anthropic-only runs surface a `_hero skipped — no OPENAI_API_KEY_` note in
 the event README; everything else still lands.
@@ -38,16 +38,17 @@ hero.png            reference still (off-black bg, silhouettes only, no faces)
 higgsfield.json     {prompt, camera_move, aspect_ratio, duration_s, ref_image_path}
 conversation.json   four-persona Polymarket-style probability debate
 sources.json        raw article URLs + outlet metadata
-video.mp4           optional — only when ENABLE_SORA_RENDER=true
+video.mp4           optional — only when ENABLE_HIGGSFIELD_RENDER=true
 ```
 
 Plus `output/README.md` — a one-glance table of every event written so far.
 
-## Sora video (optional)
+## Video (optional)
 
-Set `ENABLE_SORA_RENDER=true` in `.env` (and optionally `SORA_MODEL_ID=sora-2-pro`).
-Each story will additionally render a `video.mp4` using the hero PNG as the
-input reference. Sora burns money — leave it off unless you mean it.
+Higgsfield video rendering is wired and ready. Add `HIGGSFIELD_API_KEY=...`
+to `.env` and set `ENABLE_HIGGSFIELD_RENDER=true`. Without those, the
+pipeline ships a complete brief (hero image + Higgsfield prompt) that you
+can paste into Higgsfield by hand.
 
 ## How it works
 
@@ -57,7 +58,8 @@ articles, walks cohesion thresholds to find cross-outlet clusters, then for
 each cluster: one OpenAI brief call, a four-persona Anthropic debate, a
 Polymarket live-match-or-propose pass, and a `gpt-image-1` hero render.
 Sibling clusters of the same story (high index overlap) are skipped so
-`-n 5` returns five actually-different stories.
+`-n 5` returns five actually-different stories. When Higgsfield keys are
+set, the hero PNG + prompt are submitted to the image-to-video API.
 
 `.github/workflows/run.yml` runs the same thing on a 30-min cron and
 commits `output/` back to `main`. Add the two API keys as repo secrets.

@@ -181,7 +181,7 @@ def write_event(
     video_path: Path | None = None,
     hero_skip_reason: str | None = None,
 ) -> None:
-    """Emit the four output files for one event (plus ``video.mp4`` when Sora ran)."""
+    """Emit the four output files for one event (plus ``video.mp4`` when Higgsfield ran)."""
     folder.mkdir(parents=True, exist_ok=True)
 
     higgs = dict(brief.get("higgsfield") or {})
@@ -238,7 +238,7 @@ def write_event(
     if video_path and video_path.exists():
         video_block = (
             "\n## Video\n\n"
-            f"Rendered by Sora 2 ({higgs_camera}, {higgs_ratio}, {higgs_dur}s). "
+            f"Rendered by Higgsfield ({higgs_camera}, {higgs_ratio}, {higgs_dur}s). "
             f"File: [`{video_path.name}`](./{video_path.name}).\n\n"
             f"![preview](./{video_path.name})\n"
         )

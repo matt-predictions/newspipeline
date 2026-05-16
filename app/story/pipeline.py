@@ -9,7 +9,8 @@ Linear flow, no debate loops, no relevance gating:
 5. Persona panel discusses the story.
 6. Polymarket: live-match → propose-market if no live match.
 7. Render the hero image.
-8. Optional: Sora 2 video render (off by default, hero is the reference frame).
+8. Optional: Higgsfield image-to-video render (off by default, hero is the
+   reference frame).
 9. Write the 5-file output folder + rebuild ``output/README.md``.
 
 All progress is printed to stdout via ``app.core.log`` — single-line timestamps,
@@ -45,7 +46,7 @@ from app.personas.conversation import run_conversation
 from app.personas.panel import load_personas
 from app.polymarket.matcher import match_to_live_market
 from app.polymarket.proposer import propose_market
-from app.render.sora import render_video
+from app.render.higgsfield import render_video
 from app.story.write import write_event, write_index
 
 
@@ -137,7 +138,7 @@ def _print_key_status() -> None:
     elif s.has_openai:
         suffix = "routing conversation+proposer through OpenAI"
     elif s.has_anthropic:
-        suffix = "routing brief through Anthropic (no hero image, no sora)"
+        suffix = "routing brief through Anthropic (no hero image, no higgsfield)"
     else:
         suffix = "no providers — pipeline will fail"
     step(f"keys: openai={oa}, anthropic={an} ({suffix})")
@@ -260,12 +261,12 @@ async def _run_one(
 
     video_path: Path | None = None
     higgs = brief.get("higgsfield") or {}
-    if not s.has_openai:
-        _say("sora: skipped (no OPENAI_API_KEY)", indent=1)
-    elif not s.enable_sora_render:
-        _say("sora: skipped (ENABLE_SORA_RENDER=false)", indent=1)
+    if not s.enable_higgsfield_render:
+        _say("higgsfield: skipped (ENABLE_HIGGSFIELD_RENDER=false)", indent=1)
+    elif not s.higgsfield_api_key.strip():
+        _say("higgsfield: skipped (no HIGGSFIELD_API_KEY)", indent=1)
     elif hero_path is None:
-        _say("sora: skipped (no hero image)", indent=1)
+        _say("higgsfield: skipped (no hero image)", indent=1)
     else:
         candidate_video = folder / "video.mp4"
         try:
@@ -273,12 +274,13 @@ async def _run_one(
                 prompt=str(higgs.get("prompt") or hook),
                 hero_path=hero_path,
                 out_path=candidate_video,
+                camera_move=str(higgs.get("camera_move") or "static"),
                 aspect_ratio=str(higgs.get("aspect_ratio") or "9:16"),
                 duration_s=int(higgs.get("duration_s") or 8),
             )
             video_path = result
         except Exception as exc:
-            _warn("sora", exc)
+            _warn("higgsfield", exc)
             video_path = None
 
     # Drop transient meta before writing — it's not part of the deliverable.
